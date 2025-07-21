@@ -283,9 +283,9 @@ export function SignOutTable({
 
   const handleDownloadWorkAreaSheets = () => {
     // Create HTML content for PDF generation with auto-download
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
+    // Using string concatenation to avoid Next.js static analysis issues
+    const htmlStart = '<!DOCTYPE ' + 'html>' + '\n<' + 'html>';
+    const htmlHead = `
         <head>
           <meta charset="utf-8">
           <title>Arbeitsbereich Aufteilung - ${selectedEvent?.name || 'Event'}</title>
@@ -344,7 +344,9 @@ export function SignOutTable({
               }, 500);
             }
           </script>
-        </head>
+        </head>`;
+    
+    const htmlBody = `
         <body>
           <div class="event-title">${selectedEvent?.name || 'Event'}</div>
           <div class="event-date">${selectedEvent?.date || new Date().toLocaleDateString('de-DE')}</div>
@@ -359,9 +361,11 @@ export function SignOutTable({
               </div>
             </div>
           `).join('')}
-        </body>
-      </html>
-    `
+        </body>`;
+    
+    const htmlEnd = '</' + 'html>';
+    
+    const htmlContent = htmlStart + htmlHead + htmlBody + htmlEnd;
 
     // Create blob and download HTML file that will auto-print
     const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' })
