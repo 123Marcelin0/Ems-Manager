@@ -19,17 +19,29 @@ export function useWorkAreas() {
 
   // Helper function to get authenticated headers
   const getAuthHeaders = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession()
+      
+      if (error) {
+        console.error('Error getting session:', error)
+        throw new Error('Authentication required. Please log in.')
+      }
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      }
+      
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`
+      } else {
+        throw new Error('Authentication required. Please log in.')
+      }
+      
+      return headers
+    } catch (error) {
+      console.error('Error in getAuthHeaders:', error)
+      throw new Error('Authentication required. Please log in.')
     }
-    
-    if (session?.access_token) {
-      headers['Authorization'] = `Bearer ${session.access_token}`
-    }
-    
-    return headers
   }
 
   // Fetch work areas for a specific event

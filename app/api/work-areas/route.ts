@@ -1,12 +1,55 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
+
+// Helper function to get authenticated supabase client
+async function getAuthenticatedClient(request: Request) {
+  const authHeader = request.headers.get('Authorization');
+  
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    
+    // Create a client with the user's token
+    const userClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: authHeader
+          }
+        }
+      }
+    );
+    
+    // Verify the token is valid
+    const { data: { user }, error } = await userClient.auth.getUser(token);
+    
+    if (error || !user) {
+      return { client: null, user: null, error: 'Authentication required. Please log in.' };
+    }
+    
+    return { client: userClient, user, error: null };
+  }
+  
+  return { client: null, user: null, error: 'Authentication required. Please log in.' };
+}
 
 export async function GET(request: Request) {
   try {
+    const { client, user, error: authError } = await getAuthenticatedClient(request);
+    
+    if (authError || !client || !user) {
+      return NextResponse.json({ 
+        success: false, 
+        error: authError || 'Authentication required. Please log in.' 
+      }, { status: 401 });
+    }
+
     const url = new URL(request.url);
     const eventId = url.searchParams.get('eventId');
 
-    let query = supabaseAdmin.from('work_areas').select('*');
+    let query = client.from('work_areas').select('*');
     
     if (eventId) {
       query = query.eq('event_id', eventId);
@@ -34,10 +77,19 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const { client, user, error: authError } = await getAuthenticatedClient(request);
+    
+    if (authError || !client || !user) {
+      return NextResponse.json({ 
+        success: false, 
+        error: authError || 'Authentication required. Please log in.' 
+      }, { status: 401 });
+    }
+
     const workAreaData = await request.json();
 
-    // Use the admin client to bypass RLS
-    const { data, error } = await supabaseAdmin
+    // Use the authenticated client
+    const { data, error } = await client
       .from('work_areas')
       .insert([workAreaData])
       .select()
