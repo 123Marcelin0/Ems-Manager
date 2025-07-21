@@ -61,14 +61,21 @@ export async function POST(request: Request) {
         });
       }
 
-      // Update employee status using the database function
+      // Update employee status directly in the table (since function doesn't exist yet)
       const { data, error } = await supabaseAdmin
-        .rpc('update_employee_event_status', {
-          p_employee_id: employee_id,
-          p_event_id: event_id,
-          p_new_status: dbStatus,
-          p_response_method: 'manual_update'
-        });
+        .from('employee_event_status')
+        .upsert({
+          employee_id: employee_id,
+          event_id: event_id,
+          status: dbStatus,
+          response_method: 'manual_update',
+          responded_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'employee_id,event_id'
+        })
+        .select()
+        .single();
 
       if (error) {
         console.error('Error updating employee status:', error);

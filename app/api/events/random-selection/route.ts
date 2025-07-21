@@ -27,44 +27,92 @@ export async function POST(request: Request) {
     }
 
     try {
-      // Use the database function to select employees for the event
-      const { data: selectedEmployees, error: selectionError } = await supabaseAdmin
-        .rpc('select_employees_for_event', {
-          p_event_id: event_id,
-          p_additional_count: count || 0
-        });
+      // Implement fair distribution algorithm directly
+      // Get all employees with their last worked dates
+      const { data: allEmployees, error: employeesError } = await supabaseAdmin
+        .from('employees')
+        .select('id, name, last_worked_date, is_always_needed, employment_type')
+        .eq('employment_type', 'part_time'); // Focus on part-time employees for selection
 
-      if (selectionError) {
-        console.error('Error selecting employees:', selectionError);
-        return NextResponse.json({ success: false, error: selectionError.message }, { status: 500 });
+      if (employeesError) {
+        console.error('Error fetching employees:', employeesError);
+        return NextResponse.json({ success: false, error: employeesError.message }, { status: 500 });
       }
+
+      // Get current employee statuses for this event
+      const { data: currentStatuses, error: statusError } = await supabaseAdmin
+        .from('employee_event_status')
+        .select('employee_id, status')
+        .eq('event_id', event_id);
+
+      if (statusError) {
+        console.error('Error fetching current statuses:', statusError);
+      }
+
+      // Create status map
+      const statusMap = new Map();
+      currentStatuses?.forEach(status => {
+        statusMap.set(status.employee_id, status.status);
+      });
+
+      // Filter selectable employees (not already selected, not always needed, available or not asked)
+      const selectableEmployees = allEmployees.filter(emp => {
+        const currentStatus = statusMap.get(emp.id);
+        return !emp.is_always_needed && 
+               (currentStatus === 'available' || currentStatus === 'not_asked' || !currentStatus);
+      });
+
+      // Sort by last worked date (fair distribution - longest time since last work first)
+      selectableEmployees.sort((a, b) => {
+        if (!a.last_worked_date && !b.last_worked_date) return 0;
+        if (!a.last_worked_date) return -1; // Never worked comes first
+        if (!b.last_worked_date) return 1;
+        return new Date(a.last_worked_date) - new Date(b.last_worked_date);
+      });
+
+      // Select the required number of employees
+      const selectedEmployees = selectableEmployees.slice(0, Math.min(count, selectableEmployees.length));
 
       // Update the status of selected employees to 'selected'
-      if (selectedEmployees && selectedEmployees.length > 0) {
-        for (const employee of selectedEmployees) {
-          const { error: updateError } = await supabaseAdmin
-            .rpc('update_employee_event_status', {
-              p_employee_id: employee.employee_id,
-              p_event_id: event_id,
-              p_new_status: 'selected',
-              p_response_method: 'system_selection'
-            });
+      const updatePromises = selectedEmployees.map(employee => 
+        supabaseAdmin
+          .from('employee_event_status')
+          .upsert({
+            employee_id: employee.id,
+            event_id: event_id,
+            status: 'selected',
+            response_method: 'system_selection',
+            responded_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'employee_id,event_id'
+          })
+      );
 
-          if (updateError) {
-            console.error('Error updating employee status:', updateError);
-            // Continue with other employees even if one fails
-          }
-        }
-      }
+      await Promise.all(updatePromises);
 
-      // Get updated event summary
-      const { data: summary, error: summaryError } = await supabaseAdmin
-        .rpc('get_event_employee_summary', {
-          p_event_id: event_id
-        });
+      // Get updated summary
+      const { data: summaryData, error: summaryError } = await supabaseAdmin
+        .from('employee_event_status')
+        .select('status')
+        .eq('event_id', event_id);
 
-      if (summaryError) {
-        console.error('Error getting event summary:', summaryError);
+      let summary = null;
+      if (!summaryError && summaryData) {
+        const statusCounts = summaryData.reduce((acc, item) => {
+          acc[item.status] = (acc[item.status] || 0) + 1;
+          return acc;
+        }, {});
+        
+        summary = {
+          event_id: event_id,
+          total_asked: statusCounts.asked || 0,
+          total_available: statusCounts.available || 0,
+          total_unavailable: statusCounts.unavailable || 0,
+          total_selected: statusCounts.selected || 0,
+          total_working: statusCounts.working || 0,
+          total_completed: statusCounts.completed || 0
+        };
       }
 
       return NextResponse.json({

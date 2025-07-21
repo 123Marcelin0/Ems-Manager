@@ -51,18 +51,23 @@ export async function POST(request: Request) {
 
       const alwaysNeededIds = (alwaysNeeded || []).map(emp => emp.id);
 
-      // Update all employees for this event
+      // Update all employees for this event directly
       const updates = [];
       for (const employee of employees || []) {
         const isAlwaysNeeded = alwaysNeededIds.includes(employee.employee_id);
         const newStatus = isAlwaysNeeded ? 'always_needed' : 'not_asked';
 
         const { error: updateError } = await supabaseAdmin
-          .rpc('update_employee_event_status', {
-            p_employee_id: employee.employee_id,
-            p_event_id: event_id,
-            p_new_status: newStatus,
-            p_response_method: 'reset_all'
+          .from('employee_event_status')
+          .upsert({
+            employee_id: employee.employee_id,
+            event_id: event_id,
+            status: newStatus,
+            response_method: 'reset_all',
+            responded_at: null,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'employee_id,event_id'
           });
 
         if (updateError) {
