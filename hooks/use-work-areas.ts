@@ -17,30 +17,10 @@ export function useWorkAreas() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Helper function to get authenticated headers
-  const getAuthHeaders = async () => {
-    try {
-      const { data: { session }, error } = await supabase.auth.getSession()
-      
-      if (error) {
-        console.error('Error getting session:', error)
-        throw new Error('Authentication required. Please log in.')
-      }
-      
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      }
-      
-      if (session?.access_token) {
-        headers['Authorization'] = `Bearer ${session.access_token}`
-      } else {
-        throw new Error('Authentication required. Please log in.')
-      }
-      
-      return headers
-    } catch (error) {
-      console.error('Error in getAuthHeaders:', error)
-      throw new Error('Authentication required. Please log in.')
+  // Helper function to get standard headers
+  const getHeaders = () => {
+    return {
+      'Content-Type': 'application/json',
     }
   }
 
@@ -52,7 +32,7 @@ export function useWorkAreas() {
       
       console.log(`Fetching work areas for event: ${eventId}`)
       
-      const headers = await getAuthHeaders()
+      const headers = getHeaders()
       const response = await fetch(`/api/work-areas?eventId=${eventId}`, {
         headers
       })
@@ -95,7 +75,7 @@ export function useWorkAreas() {
       setLoading(true)
       setError(null)
       
-      const headers = await getAuthHeaders()
+      const headers = getHeaders()
       const response = await fetch('/api/work-areas', { headers })
       const contentType = response.headers.get('content-type');
       if (!response.ok) {
@@ -136,7 +116,7 @@ export function useWorkAreas() {
       
       console.log('Creating work area:', workAreaData)
       
-      const headers = await getAuthHeaders()
+      const headers = getHeaders()
       const response = await fetch('/api/work-areas', {
         method: 'POST',
         headers,
@@ -190,11 +170,10 @@ export function useWorkAreas() {
         area.id === id ? { ...area, ...updates } : area
       ))
       
+      const headers = getHeaders()
       const response = await fetch(`/api/work-areas/${id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify(updates),
       })
       
@@ -258,8 +237,10 @@ export function useWorkAreas() {
       // Optimistic update - remove from local state immediately
       setWorkAreas(prev => prev.filter(area => area.id !== id))
       
+      const headers = getHeaders()
       const response = await fetch(`/api/work-areas/${id}`, {
         method: 'DELETE',
+        headers,
       })
       
       const contentType = response.headers.get('content-type');
