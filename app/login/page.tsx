@@ -1,4 +1,5 @@
-"use client"
+"use client";
+export const dynamic = "force-dynamic";
 import { LoginForm } from "@/components/auth/login-form"
 import { redirect } from "next/navigation"
 
