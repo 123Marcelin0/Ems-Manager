@@ -1,0 +1,37 @@
+/* Fix for dashboard elements disappearing on click */
+.bg-white.rounded-3xl.shadow-\[0_4px_20px_rgba\(0\,0\,0\,0\.08\)\],
+.bg-white.rounded-3xl.shadow-\[0_4px_20px_rgba\(0\,0\,0\,0\.08\)\]:active,
+.bg-white.rounded-3xl.shadow-\[0_4px_20px_rgba\(0\,0\,0\,0\.08\)\]:focus {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08) !important;
+  background-color: white !important;
+  border-radius: 1.5rem !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: none !important;
+  transition: none !important;
+}
+
+/* Prevent any animation or transition on dashboard elements */
+.bg-white.rounded-3xl.shadow-\[0_4px_20px_rgba\(0\,0\,0\,0\.08\)\] {
+  transition: none !important;
+  animation: none !important;
+}
+
+/* Ensure the shadow is always visible */
+.shadow-\[0_4px_20px_rgba\(0\,0\,0\,0\.08\)\] {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08) !important;
+}
+
+/* Prevent any click effects on container divs */
+div.bg-white.rounded-3xl {
+  pointer-events: auto !important;
+  user-select: none !important;
+}
+
+/* Disable any transitions or animations on dashboard elements */
+.event-selector,
+.quick-actions,
+.employee-section {
+  transition: none !important;
+  animation: none !important;
+}
