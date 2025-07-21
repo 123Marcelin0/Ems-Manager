@@ -1,34 +1,23 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { supabase } from '@/lib/supabase'
 
-export interface WorkAssignment {
+interface WorkAssignment {
   id: string
   employee_id: string
   work_area_id: string
   event_id: string
   assigned_at: string
-  employees?: {
+  employee?: {
     id: string
     name: string
     role: string
     phone_number: string
   }
-  work_areas?: {
+  work_area?: {
     id: string
     name: string
     location: string
-    max_capacity: number
-    role_requirements: Record<string, number>
   }
-  events?: {
-    id: string
-    title: string
-    event_date: string
-  }
-}
-
-export interface CreateAssignmentData {
-  employee_id: string
-  work_area_id: string
 }
 
 export function useWorkAssignments() {
@@ -36,40 +25,46 @@ export function useWorkAssignments() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchAssignments = async (filters?: { 
-    event_id?: string; 
-    employee_id?: string; 
-    work_area_id?: string 
-  }) => {
+  // Fetch work assignments for a specific event
+  const fetchAssignmentsByEvent = useCallback(async (eventId: string) => {
     try {
       setLoading(true)
       setError(null)
       
-      const params = new URLSearchParams()
-      if (filters?.event_id) params.append('event_id', filters.event_id)
-      if (filters?.employee_id) params.append('employee_id', filters.employee_id)
-      if (filters?.work_area_id) params.append('work_area_id', filters.work_area_id)
+      console.log(`Fetching work assignments for event: ${eventId}`)
       
-      const response = await fetch(`/api/work-assignments?${params}`)
+      const response = await fetch(`/api/work-assignments?eventId=${eventId}`, {
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+      
       const result = await response.json()
-
+      
       if (!result.success) {
         throw new Error(result.error || 'Failed to fetch work assignments')
       }
-
+      
+      console.log(`Fetched ${result.data?.length || 0} work assignments`)
       setAssignments(result.data || [])
-      return result.data
+      return result.data || []
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch work assignments')
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch work assignments'
+      console.error('Error fetching work assignments:', errorMessage)
+      setError(errorMessage)
       throw err
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  const saveAssignments = async (eventId: string, assignmentData: CreateAssignmentData[]) => {
+  // Assign employee to work area
+  const assignEmployee = async (employeeId: string, workAreaId: string, eventId: string) => {
     try {
+      setLoading(true)
       setError(null)
+      
+      console.log(`Assigning employee ${employeeId} to work area ${workAreaId} for event ${eventId}`)
       
       const response = await fetch('/api/work-assignments', {
         method: 'POST',
@@ -77,99 +72,220 @@ export function useWorkAssignments() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          event_id: eventId,
-          assignments: assignmentData,
-        }),
+          employee_id: employeeId,
+          work_area_id: workAreaId,
+          event_id: eventId
+        })
       })
-
-      const result = await response.json()
-
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to save work assignments')
-      }
-
-      // Refresh assignments after saving
-      await fetchAssignments({ event_id: eventId })
       
+      const result = await response.json()
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to assign employee')
+      }
+      
+      // Update local state
+      if (result.data) {
+        setAssignments(prev => {
+          const existingIndex = prev.findIndex(assignment => 
+            assignment.employee_id === employeeId && assignment.event_id === eventId
+          )
+          
+          if (existingIndex >= 0) {
+            // Update existing
+            const newAssignments = [...prev]
+            newAssignments[existingIndex] = result.data
+            return newAssignments
+          } else {
+            // Add new
+            return [...prev, result.data]
+          }
+        })
+      }
+      
+      console.log('Work assignment created/updated successfully')
       return result.data
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save work assignments')
+      const errorMessage = err instanceof Error ? err.message : 'Failed to assign employee'
+      console.error('Error assigning employee:', errorMessage)
+      setError(errorMessage)
       throw err
+    } finally {
+      setLoading(false)
     }
   }
 
-  const removeAssignment = async (params: {
-    assignment_id?: string;
-    event_id?: string;
-    employee_id?: string;
-    work_area_id?: string;
-  }) => {
+  // Remove employee from work area
+  const removeAssignment = async (employeeId: string, eventId: string) => {
     try {
+      setLoading(true)
       setError(null)
       
-      const urlParams = new URLSearchParams()
-      if (params.assignment_id) urlParams.append('assignment_id', params.assignment_id)
-      if (params.event_id) urlParams.append('event_id', params.event_id)
-      if (params.employee_id) urlParams.append('employee_id', params.employee_id)
-      if (params.work_area_id) urlParams.append('work_area_id', params.work_area_id)
+      console.log(`Removing assignment for employee ${employeeId} from event ${eventId}`)
       
-      const response = await fetch(`/api/work-assignments?${urlParams}`, {
-        method: 'DELETE',
+      const response = await fetch('/api/work-assignments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          employee_id: employeeId,
+          event_id: eventId,
+          action: 'remove'
+        })
       })
-
+      
       const result = await response.json()
-
+      
       if (!result.success) {
-        throw new Error(result.error || 'Failed to remove work assignment')
+        throw new Error(result.error || 'Failed to remove assignment')
       }
-
-      // Update local state by removing the assignment
-      if (params.assignment_id) {
-        setAssignments(prev => prev.filter(assignment => assignment.id !== params.assignment_id))
-      } else if (params.event_id && params.employee_id && params.work_area_id) {
-        setAssignments(prev => prev.filter(assignment => 
-          !(assignment.event_id === params.event_id && 
-            assignment.employee_id === params.employee_id && 
-            assignment.work_area_id === params.work_area_id)
-        ))
-      }
-
-      return result
+      
+      // Update local state
+      setAssignments(prev => prev.filter(assignment => 
+        !(assignment.employee_id === employeeId && assignment.event_id === eventId)
+      ))
+      
+      console.log('Work assignment removed successfully')
+      return true
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove work assignment')
+      const errorMessage = err instanceof Error ? err.message : 'Failed to remove assignment'
+      console.error('Error removing assignment:', errorMessage)
+      setError(errorMessage)
       throw err
+    } finally {
+      setLoading(false)
     }
   }
 
-  const getAssignmentsForEvent = (eventId: string) => {
-    return assignments.filter(assignment => assignment.event_id === eventId)
-  }
-
-  const getAssignmentsForEmployee = (employeeId: string) => {
-    return assignments.filter(assignment => assignment.employee_id === employeeId)
-  }
-
-  const getAssignmentsForWorkArea = (workAreaId: string) => {
+  // Get assignments for a specific work area
+  const getAssignmentsByWorkArea = useCallback((workAreaId: string) => {
     return assignments.filter(assignment => assignment.work_area_id === workAreaId)
+  }, [assignments])
+
+  // Get assignment for a specific employee in an event
+  const getEmployeeAssignment = useCallback((employeeId: string, eventId: string) => {
+    return assignments.find(assignment => 
+      assignment.employee_id === employeeId && assignment.event_id === eventId
+    )
+  }, [assignments])
+
+  // Auto-assign employees to work areas based on roles and capacity
+  const autoAssignEmployees = async (eventId: string, availableEmployees: any[], workAreas: any[]) => {
+    try {
+      setLoading(true)
+      setError(null)
+      
+      console.log('Starting auto-assignment of employees to work areas')
+      
+      const response = await fetch('/api/work-assignments', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          event_id: eventId
+        })
+      })
+      
+      const result = await response.json()
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to auto-assign employees')
+      }
+      
+      setAssignments(result.data || [])
+      console.log(`Auto-assigned ${result.data?.length || 0} employees to work areas`)
+      return result.data || []
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to auto-assign employees'
+      console.error('Error auto-assigning employees:', errorMessage)
+      setError(errorMessage)
+      throw err
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const getEmployeesInWorkArea = (workAreaId: string) => {
-    return assignments
-      .filter(assignment => assignment.work_area_id === workAreaId)
-      .map(assignment => assignment.employees)
-      .filter(Boolean)
-  }
+  // Real-time subscription for work assignments
+  useEffect(() => {
+    const subscription = supabase
+      .channel('work-assignments-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'work_assignments'
+      }, (payload) => {
+        console.log('Work assignment change detected:', payload.eventType, payload)
+        
+        if (payload.eventType === 'INSERT') {
+          // Fetch the full assignment with relations
+          supabase
+            .from('work_assignments')
+            .select(`
+              id,
+              employee_id,
+              work_area_id,
+              event_id,
+              assigned_at,
+              employee:employees(id, name, role, phone_number),
+              work_area:work_areas(id, name, location)
+            `)
+            .eq('id', payload.new.id)
+            .single()
+            .then(({ data }) => {
+              if (data) {
+                setAssignments(prev => {
+                  // Avoid duplicates
+                  if (prev.some(assignment => assignment.id === data.id)) {
+                    return prev
+                  }
+                  return [...prev, data]
+                })
+              }
+            })
+        } else if (payload.eventType === 'UPDATE') {
+          // Fetch the updated assignment with relations
+          supabase
+            .from('work_assignments')
+            .select(`
+              id,
+              employee_id,
+              work_area_id,
+              event_id,
+              assigned_at,
+              employee:employees(id, name, role, phone_number),
+              work_area:work_areas(id, name, location)
+            `)
+            .eq('id', payload.new.id)
+            .single()
+            .then(({ data }) => {
+              if (data) {
+                setAssignments(prev => prev.map(assignment => 
+                  assignment.id === data.id ? data : assignment
+                ))
+              }
+            })
+        } else if (payload.eventType === 'DELETE') {
+          setAssignments(prev => prev.filter(assignment => assignment.id !== payload.old.id))
+        }
+      })
+      .subscribe()
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [])
 
   return {
     assignments,
     loading,
     error,
-    fetchAssignments,
-    saveAssignments,
+    fetchAssignmentsByEvent,
+    assignEmployee,
     removeAssignment,
-    getAssignmentsForEvent,
-    getAssignmentsForEmployee,
-    getAssignmentsForWorkArea,
-    getEmployeesInWorkArea,
+    getAssignmentsByWorkArea,
+    getEmployeeAssignment,
+    autoAssignEmployees
   }
-} 
+}

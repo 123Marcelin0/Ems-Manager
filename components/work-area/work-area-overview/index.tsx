@@ -3,7 +3,9 @@
 import React, { useState, useEffect } from 'react'
 import { useSidebar } from "@/components/ui/sidebar"
 import { useWorkAreas } from "@/hooks/use-work-areas"
+import { useWorkAssignments } from "@/hooks/use-work-assignments"
 import { useEventContext } from "@/hooks/use-event-context"
+import { useEmployees } from "@/hooks/use-employees"
 import { EmployeeList } from "../employee-list"
 import type { WorkArea, Employee } from "@/hooks/use-work-area-assignment"
 
@@ -46,6 +48,8 @@ export function WorkAreaOverview({
   // Move all hooks to the top before any conditional returns
   const { setOpen } = useSidebar()
   const { workAreas: dbWorkAreas, fetchWorkAreasByEvent } = useWorkAreas()
+  const { assignments, fetchAssignmentsByEvent, assignEmployee, removeAssignment, autoAssignEmployees } = useWorkAssignments()
+  const { employees: dbEmployees, getEmployeesForSelection } = useEmployees()
   const { selectedEvent, setSelectedEvent, events } = useEventContext()
   
   // State management
@@ -58,36 +62,70 @@ export function WorkAreaOverview({
   const [showConfigDialog, setShowConfigDialog] = useState(false)
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
 
-  // Fetch work areas when component mounts or event changes
+  // Fetch work areas and assignments when component mounts or event changes
   useEffect(() => {
     if (selectedEvent?.id) {
       fetchWorkAreasByEvent(selectedEvent.id)
+      fetchAssignmentsByEvent(selectedEvent.id)
     }
-  }, [selectedEvent?.id, fetchWorkAreasByEvent])
+  }, [selectedEvent?.id, fetchWorkAreasByEvent, fetchAssignmentsByEvent])
 
-  // Transform database work areas to UI format and only include active ones
+  // Transform database employees to UI format
+  const transformedEmployees = dbEmployees.map(emp => ({
+    id: emp.id,
+    name: emp.name,
+    role: emp.role as "allrounder" | "versorger" | "verkauf" | "manager" | "essen",
+    skills: emp.skills || [],
+    availability: "available" as const
+  }))
+
+  // Get employees that are selected for this event
+  const selectedEmployeesForEvent = transformedEmployees.filter(emp => {
+    // Check if employee has status 'selected' for this event
+    // This would need to be fetched from employee_event_status table
+    return true // For now, show all employees
+  })
+
+  // Transform database work areas to UI format and include assignments
   const dbWorkAreasTransformed = dbWorkAreas
     .filter(area => area.is_active) // Only show work areas that are active (toggle switched on)
-    .map(area => ({
-      id: area.id,
-      name: area.name,
-      location: area.location,
-      requiredSkills: [],
-      requiredRoles: Object.keys(area.role_requirements).filter(role => area.role_requirements[role] > 0),
-      maxCapacity: area.max_capacity,
-      currentAssigned: 0, // Will be calculated based on assignments
-      assignedEmployees: [] as Employee[],
-      description: '',
-      priority: 'medium' as const
-    }))
+    .map(area => {
+      // Get assignments for this work area
+      const areaAssignments = assignments.filter(assignment => assignment.work_area_id === area.id)
+      
+      // Transform assignments to employees
+      const assignedEmployees = areaAssignments.map(assignment => {
+        const employee = transformedEmployees.find(emp => emp.id === assignment.employee_id)
+        return employee ? {
+          ...employee,
+          availability: "assigned" as const
+        } : null
+      }).filter(Boolean) as Employee[]
+
+      return {
+        id: area.id,
+        name: area.name,
+        location: area.location,
+        requiredSkills: [],
+        requiredRoles: Object.keys(area.role_requirements).filter(role => area.role_requirements[role] > 0),
+        maxCapacity: area.max_capacity,
+        currentAssigned: assignedEmployees.length,
+        assignedEmployees: assignedEmployees,
+        description: '',
+        priority: 'medium' as const
+      }
+    })
 
   // Use database work areas if available, otherwise fall back to props
   const workAreas = dbWorkAreasTransformed.length > 0 ? dbWorkAreasTransformed : propWorkAreas
 
+  // Use real employees if available, otherwise fall back to props
+  const realAvailableEmployees = selectedEmployeesForEvent.length > 0 ? selectedEmployeesForEvent : availableEmployees
+
   // Check if all employees are distributed
   const totalRequired = workAreas.reduce((total, area) => total + area.maxCapacity, 0)
   const totalAssigned = workAreas.reduce((total, area) => total + area.currentAssigned, 0)
-  const unassignedEmployees = availableEmployees.filter(employee => {
+  const unassignedEmployees = realAvailableEmployees.filter(employee => {
     return !workAreas.some(area => 
       area.assignedEmployees.some(assignedEmp => assignedEmp.id === employee.id)
     )
@@ -97,9 +135,27 @@ export function WorkAreaOverview({
   // Auto assignment hook
   const { handleAutoAssign, handleRedoAssignment } = useAutoAssignment({
     workAreas,
-    availableEmployees,
-    onAssignEmployee,
-    onRemoveEmployee
+    availableEmployees: realAvailableEmployees,
+    onAssignEmployee: async (workAreaId: string, employee: Employee) => {
+      if (selectedEvent?.id) {
+        try {
+          await assignEmployee(employee.id, workAreaId, selectedEvent.id)
+          console.log(`Assigned ${employee.name} to work area ${workAreaId}`)
+        } catch (error) {
+          console.error('Failed to assign employee:', error)
+        }
+      }
+    },
+    onRemoveEmployee: async (workAreaId: string, employeeId: string) => {
+      if (selectedEvent?.id) {
+        try {
+          await removeAssignment(employeeId, selectedEvent.id)
+          console.log(`Removed employee ${employeeId} from work area ${workAreaId}`)
+        } catch (error) {
+          console.error('Failed to remove employee assignment:', error)
+        }
+      }
+    }
   })
 
   // Listen for work areas changes
@@ -189,19 +245,18 @@ export function WorkAreaOverview({
     }
   }
 
-  const handleDrop = (e: React.DragEvent, areaId: string) => {
+  const handleDrop = async (e: React.DragEvent, areaId: string) => {
     e.preventDefault()
     e.stopPropagation()
     
-    if (draggedEmployee) {
-      // If dragging from another work area, remove from the source area first
-      if (draggedFromArea && draggedFromArea !== areaId) {
-        onRemoveEmployee(draggedFromArea, draggedEmployee.id)
-      }
-      
-      // Only assign if not dropping in the same area
-      if (draggedFromArea !== areaId) {
-        onAssignEmployee(areaId, draggedEmployee)
+    if (draggedEmployee && selectedEvent?.id) {
+      try {
+        // If dragging from another work area, the assignment will be updated automatically
+        // If dragging from unassigned list, create new assignment
+        await assignEmployee(draggedEmployee.id, areaId, selectedEvent.id)
+        console.log(`Assigned ${draggedEmployee.name} to work area ${areaId}`)
+      } catch (error) {
+        console.error('Failed to assign employee:', error)
       }
     }
     setDraggedEmployee(null)
@@ -292,7 +347,16 @@ export function WorkAreaOverview({
           onEventSelect={handleEventSelect}
           onConfigClick={() => setShowConfigDialog(true)}
           onEmployeesToAskChange={handleEmployeesToAskChange}
-          onAutoAssign={() => handleAutoAssign(false)}
+          onAutoAssign={async () => {
+            if (selectedEvent?.id) {
+              try {
+                await autoAssignEmployees(selectedEvent.id, realAvailableEmployees, workAreas)
+                console.log('Auto-assignment completed')
+              } catch (error) {
+                console.error('Auto-assignment failed:', error)
+              }
+            }
+          }}
           onRedoAssignment={handleRedoAssignment}
           onSave={handleSave}
         />
@@ -300,11 +364,29 @@ export function WorkAreaOverview({
         {/* Work Areas Grid */}
         <WorkAreasGrid
           workAreas={workAreas}
-          availableEmployees={availableEmployees}
+          availableEmployees={realAvailableEmployees}
           draggedEmployee={draggedEmployee}
           dragOverArea={dragOverArea}
-          onAssignEmployee={onAssignEmployee}
-          onRemoveEmployee={onRemoveEmployee}
+          onAssignEmployee={async (workAreaId: string, employee: Employee) => {
+            if (selectedEvent?.id) {
+              try {
+                await assignEmployee(employee.id, workAreaId, selectedEvent.id)
+                console.log(`Assigned ${employee.name} to work area ${workAreaId}`)
+              } catch (error) {
+                console.error('Failed to assign employee:', error)
+              }
+            }
+          }}
+          onRemoveEmployee={async (workAreaId: string, employeeId: string) => {
+            if (selectedEvent?.id) {
+              try {
+                await removeAssignment(employeeId, selectedEvent.id)
+                console.log(`Removed employee ${employeeId} from work area ${workAreaId}`)
+              } catch (error) {
+                console.error('Failed to remove employee assignment:', error)
+              }
+            }
+          }}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}

@@ -1,15 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { NextResponse } from 'next/server';
+import { supabaseAdmin } from '@/lib/supabase';
 
-// GET /api/work-assignments - Fetch work assignments for an event
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url)
-    const event_id = searchParams.get('event_id')
-    const employee_id = searchParams.get('employee_id')
-    const work_area_id = searchParams.get('work_area_id')
+    const url = new URL(request.url);
+    const eventId = url.searchParams.get('eventId');
 
-    let query = supabase
+    let query = supabaseAdmin
       .from('work_assignments')
       .select(`
         id,
@@ -17,141 +14,292 @@ export async function GET(request: NextRequest) {
         work_area_id,
         event_id,
         assigned_at,
-        employees (
-          id,
-          name,
-          role,
-          phone_number
-        ),
-        work_areas (
-          id,
-          name,
-          location,
-          max_capacity,
-          role_requirements
-        ),
-        events (
-          id,
-          title,
-          event_date
-        )
-      `)
-      .order('assigned_at', { ascending: false })
-
-    // Apply filters
-    if (event_id) {
-      query = query.eq('event_id', event_id)
-    }
-    if (employee_id) {
-      query = query.eq('employee_id', employee_id)
-    }
-    if (work_area_id) {
-      query = query.eq('work_area_id', work_area_id)
+        employee:employees(id, name, role, phone_number),
+        work_area:work_areas(id, name, location)
+      `);
+    
+    if (eventId) {
+      query = query.eq('event_id', eventId);
     }
 
-    const { data, error } = await query
+    const { data, error } = await query.order('assigned_at', { ascending: false });
 
-    if (error) throw error
+    if (error) {
+      console.error('Error fetching work assignments:', error);
+      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    }
 
     return NextResponse.json({
       success: true,
       data: data || []
-    })
+    });
   } catch (error) {
-    console.error('Error fetching work assignments:', error)
+    console.error('Error in work assignments GET:', error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Failed to fetch work assignments' },
+      { success: false, error: error instanceof Error ? error.message : 'An unknown error occurred' },
       { status: 500 }
-    )
+    );
   }
 }
 
-// POST /api/work-assignments - Save work assignments for an event
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const body = await request.json()
-    const { event_id, assignments } = body
+    const { employee_id, work_area_id, event_id, action } = await request.json();
 
-    // Validate required fields
-    if (!event_id || !assignments || !Array.isArray(assignments)) {
-      return NextResponse.json(
-        { success: false, error: 'Missing required fields: event_id, assignments (array)' },
-        { status: 400 }
-      )
+    if (!employee_id || !event_id) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Employee ID and Event ID are required' 
+      }, { status: 400 });
     }
 
-    // Validate each assignment
-    for (let i = 0; i < assignments.length; i++) {
-      const assignment = assignments[i]
-      if (!assignment.employee_id || !assignment.work_area_id) {
-        return NextResponse.json(
-          { success: false, error: `Missing employee_id or work_area_id in assignment ${i + 1}` },
-          { status: 400 }
-        )
+    if (action === 'remove') {
+      // Remove assignment
+      const { error } = await supabaseAdmin
+        .from('work_assignments')
+        .delete()
+        .eq('employee_id', employee_id)
+        .eq('event_id', event_id);
+
+      if (error) {
+        console.error('Error removing work assignment:', error);
+        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Assignment removed successfully'
+      });
+    } else {
+      // Create or update assignment
+      if (!work_area_id) {
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Work Area ID is required for assignment' 
+        }, { status: 400 });
+      }
+
+      // Check if assignment already exists
+      const { data: existingAssignment } = await supabaseAdmin
+        .from('work_assignments')
+        .select('id')
+        .eq('employee_id', employee_id)
+        .eq('event_id', event_id)
+        .single();
+
+      if (existingAssignment) {
+        // Update existing assignment
+        const { data, error } = await supabaseAdmin
+          .from('work_assignments')
+          .update({
+            work_area_id: work_area_id,
+            assigned_at: new Date().toISOString()
+          })
+          .eq('id', existingAssignment.id)
+          .select(`
+            id,
+            employee_id,
+            work_area_id,
+            event_id,
+            assigned_at,
+            employee:employees(id, name, role, phone_number),
+            work_area:work_areas(id, name, location)
+          `)
+          .single();
+
+        if (error) {
+          console.error('Error updating work assignment:', error);
+          return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+        }
+
+        return NextResponse.json({
+          success: true,
+          data,
+          message: 'Assignment updated successfully'
+        });
+      } else {
+        // Create new assignment
+        const { data, error } = await supabaseAdmin
+          .from('work_assignments')
+          .insert({
+            employee_id,
+            work_area_id,
+            event_id
+          })
+          .select(`
+            id,
+            employee_id,
+            work_area_id,
+            event_id,
+            assigned_at,
+            employee:employees(id, name, role, phone_number),
+            work_area:work_areas(id, name, location)
+          `)
+          .single();
+
+        if (error) {
+          console.error('Error creating work assignment:', error);
+          return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+        }
+
+        return NextResponse.json({
+          success: true,
+          data,
+          message: 'Assignment created successfully'
+        });
       }
     }
-
-    // Use the database function to save assignments
-    const { data, error } = await supabase
-      .rpc('save_work_assignments', {
-        p_event_id: event_id,
-        p_assignments: assignments
-      })
-
-    if (error) throw error
-
-    return NextResponse.json({
-      success: true,
-      data,
-      message: `Successfully saved ${assignments.length} work assignments for event`
-    }, { status: 201 })
   } catch (error) {
-    console.error('Error saving work assignments:', error)
+    console.error('Error in work assignments POST:', error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Failed to save work assignments' },
+      { success: false, error: error instanceof Error ? error.message : 'An unknown error occurred' },
       { status: 500 }
-    )
+    );
   }
 }
 
-// DELETE /api/work-assignments - Remove specific assignment
-export async function DELETE(request: NextRequest) {
+// Auto-assign employees to work areas
+export async function PUT(request: Request) {
   try {
-    const { searchParams } = new URL(request.url)
-    const assignment_id = searchParams.get('assignment_id')
-    const event_id = searchParams.get('event_id')
-    const employee_id = searchParams.get('employee_id')
-    const work_area_id = searchParams.get('work_area_id')
+    const { event_id } = await request.json();
 
-    let deleteQuery = supabase.from('work_assignments').delete()
-
-    if (assignment_id) {
-      deleteQuery = deleteQuery.eq('id', assignment_id)
-    } else if (event_id && employee_id && work_area_id) {
-      deleteQuery = deleteQuery
-        .eq('event_id', event_id)
-        .eq('employee_id', employee_id)
-        .eq('work_area_id', work_area_id)
-    } else {
-      return NextResponse.json(
-        { success: false, error: 'Must provide either assignment_id or (event_id + employee_id + work_area_id)' },
-        { status: 400 }
-      )
+    if (!event_id) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Event ID is required' 
+      }, { status: 400 });
     }
 
-    const { error } = await deleteQuery
+    // Get employees that are selected for this event
+    const { data: selectedEmployees, error: employeesError } = await supabaseAdmin
+      .from('employee_event_status')
+      .select(`
+        employee_id,
+        employee:employees(id, name, role, employment_type, is_always_needed)
+      `)
+      .eq('event_id', event_id)
+      .eq('status', 'selected');
 
-    if (error) throw error
+    if (employeesError) {
+      console.error('Error fetching selected employees:', employeesError);
+      return NextResponse.json({ success: fals
+}  );
+  }: 500 }
+  tatus      { s
+curred' },n error ocknow : 'An unssager.meor ? errorrf Er instanceo erro error:se,success: fal
+      { n(sotResponse.j Nexrn retu
+   , error);:'o-assignments autign assr in workr('Erroerronsole.) {
+    coh (error} catc    });
+  ed'
+reatnments ce: 'No assigmessag[],
+         data: e,
+    truess:cc     sue.json({
+  NextRespons
+    return}
+  });
+    areas`
+    to work ployees  0} ema?.length ||${dated gnsfully assi: `Succes message       | [],
+data |data: e,
+        uccess: tru       sn({
+ soResponse.jturn Next
+      re
+});
+      }0 : 50, { statuse }rror.messagor: e: false, err{ successn(sponse.jsoNextRe return 
+       r);s:', erronment assigreatingrror cror('E.eronsole
+        c) {ror (er
 
-    return NextResponse.json({
-      success: true,
-      message: 'Work assignment removed successfully'
-    })
-  } catch (error) {
-    console.error('Error removing work assignment:', error)
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Failed to remove work assignment' },
-      { status: 500 }
-    )
-  }
-} 
+      if       `);ation)
+ e, locamid, nwork_areas(ork_area:   w      number),
+ one_me, role, phyees(id, naoyee:emplo  empl   ,
+     _atigned         ass_id,
+  event,
+         a_id_arework    ,
+      ployee_id          em     id,
+(`
+       .select)
+      ignments.insert(ass')
+        ignments'work_ass.from(     
+   minsupabaseAdr } = await { data, erro   const  0) {
+   .length >gnmentsf (assi
+    intsmeall assignert 
+    // Ins}
+    }
+   }
+       +;
+    ea+ssignedToAr          a    });
+     vent_id
+ ent_id: e      ev      ,
+a.idre: workAwork_area_id            ployee_id,
+.emloyeed: empmployee_i   e        h({
+ ignments.pus         assyee) {
+  (emplo     ifhift();
+   oyeePool.syee = empl emploonst  c{
+      )  0.length >oyeePoolty && emplacimax_caporkArea.a < wnedToAre (assig  while    loyees
+ailable emp avy with anypacitemaining ca Fill r    //}
+
+                }
+a++;
+AregnedTosi        as
+
+            }x, 1);
+Indeoll.splice(pomployeePoo e          ) {
+ olIndex > -1pof (   i       _id);
+employeeyee. === emploee_id emp.employex(emp =>Pool.findInd= employeet poolIndex cons          ment
+e assignd doublpool to avoiemove from  R  //
+
+          });      event_id
+  ent_id: ev       
+     ,idkArea.d: wor_area_i      work      _id,
+mployee employee.eployee_id:      em  h({
+    .pus assignments        es[i];
+ chingEmployeee = matonst employ          c
+n; i++) {oAssig < t; iet i = 0   for (l  ea);
+
+   oAr- assignedTcapacity ax_Area.mgth, workyees.lenatchingEmplodCount, mirerequn(= Math.mioAssign t t       conses
+ ble employe availacount orrequired n up to the     // Assig      );
+
+     
+ le === roleemployee?.ro   emp.    => 
+    mplter(eloyeePool.fiees = employmatchingEmp  const le
+       rohing matcoyees withind empl        // Fe;
+
+inu <= 0) contequiredCount| rnumber' |t !== 'dCounequire(typeof r     if ts)) {
+   quiremenoleReries(r.entt] of ObjectequiredCount [role, r (cons      forirements
+ role requs based on employee // Assign   0;
+
+   ToArea =ssigned    let a| {};
+  ents |_requiremoleworkArea.rments = ireeRequnst rolco) {
+      kAreasea of workAr(const wor   for 
+
+ yees];tedEmplo [...selecoyeePool =nst emplco   = [];
+  ssignments   const athm
+ lgorient agnmo-assi
+    // Aut;
+nt_id)_id', eve .eq('event  e()
+         .delet)
+gnments'rk_assiwo    .from('n
+  pabaseAdmi    await suvent
+s ets for thi assignmenistinglear ex // C }
+
+   ;
+   
+      })gnment' for assiilablereas ava work aemployees or'No age: mess
+         [],data:e,
+        rucess: tuc
+        s.json({xtResponse   return Neh) {
+   as?.lengtkAreh || !worgtlenyees?.edEmploelectf (!s i
+
+     }
+  );500 }atus: age }, { stror.messasEror: workArerr false, e({ success:ponse.jsonn NextRes   returror);
+    workAreasErareas:',ching work rror fete.error('Esol    con{
+  ) Error (workAreas
+    ifrue);
+tive', teq('is_ac .   d)
+  ent_it_id', ev'evenq(
+      .eements')e_requirity, rolac, max_cap locationme,'id, na   .select(as')
+   rem('work_afro .n
+     aseAdmiwait supabError } = arkAreas woerror:rkAreas, t { data: wons
+    coentfor this evs  areaorkt w
+    // Ge   }
+500 });
+ , { status:  }.messageyeesErroremplo error: e,
