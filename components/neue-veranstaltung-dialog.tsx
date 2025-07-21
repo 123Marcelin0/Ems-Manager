@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useTemplates } from "@/hooks/use-templates"
 import { useEvents } from "@/hooks/use-events"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
@@ -309,20 +309,27 @@ export default function NeueVeranstaltungDialog({ isOpen, onClose, onSave }: Neu
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-2xl p-0 bg-white rounded-2xl shadow-xl">
-          <div className="p-8">
-            {/* Header - Removed the duplicate close button */}
+        <DialogContent className="max-w-2xl sm:rounded-lg p-6 bg-white shadow-xl relative">
+          {/* Close Button */}
+          <DialogClose asChild>
+            <button
+              type="button"
+              className="absolute right-4 top-4 rounded-full p-2 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </DialogClose>
+          <div className="p-2 sm:p-4 md:p-8">
+            {/* Header */}
             <div className="mb-6">
-              <div>
-                <DialogTitle className="text-2xl font-bold text-gray-900 mb-2">
-                  Neue Veranstaltung erstellen
-                </DialogTitle>
-                <p className="text-gray-500 text-sm">
-                  Veranstaltungsdetails einrichten und Arbeitsbereiche konfigurieren
-                </p>
-              </div>
+              <DialogTitle className="text-2xl font-bold text-gray-900 mb-2">
+                Neue Veranstaltung erstellen
+              </DialogTitle>
+              <p className="text-gray-500 text-sm">
+                Veranstaltungsdetails einrichten und Arbeitsbereiche konfigurieren
+              </p>
             </div>
-
             <form className="space-y-6">
               {/* Veranstaltungstitel */}
               <div className="space-y-2">
@@ -337,14 +344,11 @@ export default function NeueVeranstaltungDialog({ isOpen, onClose, onSave }: Neu
                   placeholder="z.B. Summer Festival 2025"
                 />
               </div>
-
               {/* Veranstaltungsort */}
               <div className="space-y-2">
                 <label htmlFor="location" className="block text-sm font-medium text-gray-700">
                   Veranstaltungsort
                 </label>
-                
-                {/* Quick Location Options */}
                 <div className="grid grid-cols-3 gap-2 mb-3">
                   {locations.map((option) => (
                     <Button
@@ -363,8 +367,6 @@ export default function NeueVeranstaltungDialog({ isOpen, onClose, onSave }: Neu
                     </Button>
                   ))}
                 </div>
-                
-                {/* Custom Location Input */}
                 <div className="relative">
                   <Input
                     id="location"
@@ -378,7 +380,6 @@ export default function NeueVeranstaltungDialog({ isOpen, onClose, onSave }: Neu
                   </div>
                 </div>
               </div>
-
               {/* Datum & Uhrzeit */}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">
@@ -392,7 +393,6 @@ export default function NeueVeranstaltungDialog({ isOpen, onClose, onSave }: Neu
                   showEndTime={false}
                 />
               </div>
-
               {/* Counter Fields Row */}
               <div className="grid grid-cols-3 gap-4">
                 {/* Benötigte Mitarbeiter */}
@@ -425,7 +425,6 @@ export default function NeueVeranstaltungDialog({ isOpen, onClose, onSave }: Neu
                     </Button>
                   </div>
                 </div>
-
                 {/* Mitarbeiter anfragen */}
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-gray-700 flex items-center gap-2">
@@ -456,7 +455,6 @@ export default function NeueVeranstaltungDialog({ isOpen, onClose, onSave }: Neu
                     </Button>
                   </div>
                 </div>
-
                 {/* Stundenlohn */}
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-gray-700 flex items-center gap-2">
@@ -488,7 +486,6 @@ export default function NeueVeranstaltungDialog({ isOpen, onClose, onSave }: Neu
                   </div>
                 </div>
               </div>
-
               {/* Beschreibung */}
               <div className="space-y-2">
                 <label htmlFor="description" className="block text-sm font-medium text-gray-700">
@@ -502,9 +499,8 @@ export default function NeueVeranstaltungDialog({ isOpen, onClose, onSave }: Neu
                   placeholder="Beschreiben Sie die Veranstaltung... (optional)"
                 />
               </div>
-
               {/* Action Buttons */}
-              <div className="flex justify-between items-center pt-4">
+              <div className="flex flex-wrap justify-end items-center gap-2 pt-4 border-t border-gray-100 mt-4">
                 <Button
                   type="button"
                   onClick={handleSave}
@@ -513,60 +509,53 @@ export default function NeueVeranstaltungDialog({ isOpen, onClose, onSave }: Neu
                   <Calendar className="h-4 w-4" />
                   Veranstaltung erstellen
                 </Button>
-                
-                <div className="flex gap-2">
-                  {/* Template Selection Dropdown */}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="h-10 w-10 p-0 rounded-lg hover:bg-gray-100"
-                        title="Vorlage wählen"
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-10 w-10 p-0 rounded-lg hover:bg-gray-100"
+                      title="Vorlage wählen"
+                    >
+                      <BookOpen className="h-5 w-5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-64">
+                    {[...templates, ...staticTemplates].map((template) => (
+                      <DropdownMenuItem
+                        key={template.id}
+                        onClick={() => handleTemplateSelect(template)}
+                        className="cursor-pointer"
                       >
-                        <BookOpen className="h-5 w-5" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-64">
-                      {[...templates, ...staticTemplates].map((template) => (
-                        <DropdownMenuItem
-                          key={template.id}
-                          onClick={() => handleTemplateSelect(template)}
-                          className="cursor-pointer"
-                        >
-                          <div className="flex flex-col items-start w-full">
-                            <span className="font-medium">{template.name}</span>
-                            <div className="text-xs text-gray-500 mt-1">
-                              {(() => {
-                                const templateData = (template as any).event_data || (template as any).data
-                                const location = templateData?.location || 'Unknown'
-                                const employees = templateData?.employees_needed || templateData?.requiredEmployees || 0
-                                const rate = templateData?.hourly_rate || templateData?.hourlyWage || 0
-                                return `${location} • ${employees} Mitarbeiter • €${rate.toFixed(2)}`
-                              })()}
-                            </div>
+                        <div className="flex flex-col items-start w-full">
+                          <span className="font-medium">{template.name}</span>
+                          <div className="text-xs text-gray-500 mt-1">
+                            {(() => {
+                              const templateData = (template as any).event_data || (template as any).data
+                              const location = templateData?.location || 'Unknown'
+                              const employees = templateData?.employees_needed || templateData?.requiredEmployees || 0
+                              const rate = templateData?.hourly_rate || templateData?.hourlyWage || 0
+                              return `${location} • ${employees} Mitarbeiter • €${rate.toFixed(2)}`
+                            })()}
                           </div>
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  
-                  {/* Save as Template */}
-                  <Button
-                    type="button"
-                    onClick={() => setShowTemplateSaveDialog(true)}
-                    className="h-10 w-10 p-0 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
-                    title="Als Vorlage speichern"
-                  >
-                    <Save className="h-5 w-5" />
-                  </Button>
-                </div>
+                        </div>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button
+                  type="button"
+                  onClick={() => setShowTemplateSaveDialog(true)}
+                  className="h-10 w-10 p-0 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                  title="Als Vorlage speichern"
+                >
+                  <Save className="h-5 w-5" />
+                </Button>
               </div>
             </form>
           </div>
         </DialogContent>
       </Dialog>
-
       {/* Template Save Dialog */}
       <TemplateSaveDialog
         isOpen={showTemplateSaveDialog}

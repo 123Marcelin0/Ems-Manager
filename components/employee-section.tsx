@@ -23,7 +23,7 @@ interface EmployeeSectionProps {
     selected: number
     unavailable: number
   }
-  onStatusChange: (employeeId: string, newStatus: "available" | "selected" | "unavailable" | "always-needed" | "not-selected") => void
+  onStatusChange: (employeeId: string, newStatus: string) => void
   authorizationMode: boolean
   selectedForAuth: string[]
   setSelectedForAuth: (selected: string[]) => void

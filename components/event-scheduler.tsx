@@ -3,10 +3,11 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Plus, Search, ChevronLeft, ChevronRight, Calendar, X, Download, Clock, MapPin, Users } from "lucide-react"
-import { EventForm } from "./event-form"
-import { EventList } from "./event-list"
+import { EventForm } from "@/components/event-form"
+import { EventList } from "@/components/event-list"
 import { useEvents } from "@/hooks/use-events"
 import type { Database } from '@/lib/supabase'
+import type { Event as EventListEvent } from "./event-list"
 
 type DatabaseEvent = Database['public']['Tables']['events']['Row']
 
@@ -44,14 +45,15 @@ interface EventSchedulerProps {
 export function EventScheduler({ activeView = "planner" }: EventSchedulerProps) {
   const { events: dbEvents, createEvent, createEventWithWorkAreas, updateEvent, deleteEvent } = useEvents()
   const [showForm, setShowForm] = useState(false)
-  const [editingEvent, setEditingEvent] = useState<Event | null>(null)
+  const [editingEvent, setEditingEvent] = useState<EventListEvent | null>(null)
   const [currentDate, setCurrentDate] = useState(new Date())
   const [isSearchOpen, setIsSearchOpen] = useState(false)
 
   // Transform database events to match UI format
-  const events = dbEvents.map(evt => ({
+  const events: EventListEvent[] = dbEvents.map(evt => ({
     id: evt.id,
     title: evt.title,
+    name: evt.title, // for compatibility with EventSelectorButton
     location: evt.location,
     date: evt.event_date,
     time: evt.start_time,
@@ -60,7 +62,7 @@ export function EventScheduler({ activeView = "planner" }: EventSchedulerProps) 
     hourlyRate: evt.hourly_rate,
     employeesNeeded: evt.employees_needed,
     employeesToAsk: evt.employees_to_ask,
-    status: evt.status as "draft" | "recruiting" | "planned" | "active" | "completed" | "cancelled"
+    status: (evt.status as "draft" | "recruiting" | "planned" | "active" | "completed" | "cancelled" | "upcoming" | "ongoing")
   }))
 
   const handleSaveEvent = async (eventData: Omit<Event, "id" | "status">) => {
@@ -107,7 +109,7 @@ export function EventScheduler({ activeView = "planner" }: EventSchedulerProps) 
           hourly_rate: eventData.hourlyRate,
           employees_needed: eventData.employeesNeeded,
           employees_to_ask: eventData.employeesToAsk,
-          status: 'draft'
+          status: 'draft' as const
         }
 
         // Prepare work areas data if available
@@ -136,7 +138,7 @@ export function EventScheduler({ activeView = "planner" }: EventSchedulerProps) 
     }
   }
 
-  const handleEditEvent = (event: Event) => {
+  const handleEditEvent = (event: EventListEvent) => {
     setEditingEvent(event)
     setShowForm(true)
   }

@@ -384,8 +384,6 @@ export function SignOutTable({
       onBack={() => setShowWorkAreaAssignment?.(false)} 
       activeView={workAreaView}
       setActiveView={setWorkAreaView}
-      selectedEvent={selectedEvent}
-      setSelectedEvent={() => {}} // Not needed in this context
       availableEmployees={availableEmployees} // Pass available employees from Mitteilungen
       onEmployeeStatusChange={onEmployeeStatusChange} // Pass status change handler
     />

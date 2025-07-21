@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Shuffle, RotateCcw, Info } from "lucide-react"
-import { Event } from "@/components/event-selector"
+import type { Event } from "@/components/event-selector"
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { EmployeeRecruitmentStatus } from "@/components/employee-recruitment-status"
 

@@ -6,7 +6,7 @@ import { EventSelectorButton } from "./event-selector-button"
 import { Button } from "./ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu"
 
-interface Event {
+export interface Event {
   id: string
   name: string
   date: string

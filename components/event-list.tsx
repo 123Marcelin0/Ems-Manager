@@ -8,7 +8,7 @@ import { Calendar, Clock, MapPin, Star, MoreHorizontal, Edit, Trash2, Users, Set
 import { EventEditDialog } from "./event-edit-dialog"
 import { EventSelectorButton } from "./event-selector-button"
 
-interface Event {
+export interface Event {
   id: string
   title: string
   location: string
