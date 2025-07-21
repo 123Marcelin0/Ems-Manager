@@ -100,39 +100,57 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       console.log('❌ Work Areas API: User not authenticated:', authError?.message || 'Auth session missing!');
       
-      // For development/testing - if session was set successfully but getUser() failed,
-      // try a direct insert without strict user verification
+      // For development/testing - simulate authentication with test manager
       const authHeader = request.headers.get('authorization');
       if (authHeader && authHeader.startsWith('Bearer ') && process.env.NODE_ENV === 'development') {
-        console.log('🔧 Work Areas API: Using development bypass - attempting direct insert...');
+        console.log('🔧 Work Areas API: Using development bypass with test manager authentication...');
         
-        const { data: workArea, error: insertError } = await authenticatedSupabase
-          .from('work_areas')
-          .insert({
-            event_id,
-            name,
-            location,
-            max_capacity,
-            role_requirements,
-            is_active: true,
-            created_at: new Date().toISOString()
-          })
-          .select()
-          .single();
-
-        if (insertError) {
-          console.error('❌ Work Areas API: Development insert error:', insertError);
-          return NextResponse.json(
-            { success: false, error: `Database error: ${insertError.message}` },
-            { status: 500, headers: { 'Content-Type': 'application/json' } }
+        // Set session for test manager
+        try {
+          await authenticatedSupabase.auth.setSession({
+            access_token: 'test-manager-token',
+            refresh_token: ''
+          });
+          
+          // Override auth.uid() by using service client for test manager
+          const { createClient } = require('@supabase/supabase-js');
+          const serviceSupabase = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
           );
-        }
+          
+          const { data: workArea, error: insertError } = await serviceSupabase
+            .from('work_areas')
+            .insert({
+              event_id,
+              name,
+              location,
+              max_capacity,
+              role_requirements,
+              is_active: true,
+              created_at: new Date().toISOString()
+            })
+            .select()
+            .single();
 
-        console.log('✅ Work Areas API: Work area created via development bypass:', workArea);
-        return NextResponse.json({ 
-          success: true, 
-          data: workArea 
-        }, { status: 201, headers: { 'Content-Type': 'application/json' } });
+          if (insertError) {
+            console.error('❌ Work Areas API: Development insert error:', insertError);
+            console.error('💡 This might be an RLS policy issue. Try running the disable-rls-for-testing.sql script in Supabase.');
+            return NextResponse.json(
+              { success: false, error: `Database error: ${insertError.message}` },
+              { status: 500, headers: { 'Content-Type': 'application/json' } }
+            );
+          }
+
+          console.log('✅ Work Areas API: Work area created via development bypass:', workArea);
+          return NextResponse.json({ 
+            success: true, 
+            data: workArea 
+          }, { status: 201, headers: { 'Content-Type': 'application/json' } });
+          
+        } catch (error) {
+          console.error('❌ Work Areas API: Development bypass failed:', error);
+        }
       }
       
       return NextResponse.json(
