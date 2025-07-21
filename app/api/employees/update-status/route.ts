@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export async function POST(request: Request) {
   try {
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     // For real employees with UUID format, update in database
     try {
       // First check if the employee exists in the database
-      const { data: employee, error: employeeError } = await supabase
+      const { data: employee, error: employeeError } = await supabaseAdmin
         .from('employees')
         .select('id')
         .eq('id', employee_id)
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       }
 
       // Update employee status using the database function
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .rpc('update_employee_event_status', {
           p_employee_id: employee_id,
           p_event_id: event_id,

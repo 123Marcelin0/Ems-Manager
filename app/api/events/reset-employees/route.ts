@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export async function POST(request: Request) {
   try {
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
 
     try {
       // Get all employees for this event
-      const { data: employees, error: employeesError } = await supabase
+      const { data: employees, error: employeesError } = await supabaseAdmin
         .from('employee_event_status')
         .select('employee_id')
         .eq('event_id', event_id);
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
       }
 
       // Reset all employees to 'not_asked' status except always_needed ones
-      const { data: alwaysNeeded, error: alwaysNeededError } = await supabase
+      const { data: alwaysNeeded, error: alwaysNeededError } = await supabaseAdmin
         .from('employees')
         .select('id')
         .eq('is_always_needed', true);
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
         const isAlwaysNeeded = alwaysNeededIds.includes(employee.employee_id);
         const newStatus = isAlwaysNeeded ? 'always_needed' : 'not_asked';
 
-        const { error: updateError } = await supabase
+        const { error: updateError } = await supabaseAdmin
           .rpc('update_employee_event_status', {
             p_employee_id: employee.employee_id,
             p_event_id: event_id,

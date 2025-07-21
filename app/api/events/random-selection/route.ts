@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export async function POST(request: Request) {
   try {
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
 
     try {
       // Use the database function to select employees for the event
-      const { data: selectedEmployees, error: selectionError } = await supabase
+      const { data: selectedEmployees, error: selectionError } = await supabaseAdmin
         .rpc('select_employees_for_event', {
           p_event_id: event_id,
           p_additional_count: count || 0
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
       // Update the status of selected employees to 'selected'
       if (selectedEmployees && selectedEmployees.length > 0) {
         for (const employee of selectedEmployees) {
-          const { error: updateError } = await supabase
+          const { error: updateError } = await supabaseAdmin
             .rpc('update_employee_event_status', {
               p_employee_id: employee.employee_id,
               p_event_id: event_id,
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
       }
 
       // Get updated event summary
-      const { data: summary, error: summaryError } = await supabase
+      const { data: summary, error: summaryError } = await supabaseAdmin
         .rpc('get_event_employee_summary', {
           p_event_id: event_id
         });
