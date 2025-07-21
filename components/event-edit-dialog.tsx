@@ -112,28 +112,33 @@ export function EventEditDialog({ isOpen, onClose, event, onSave }: EventEditDia
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
-        <div className="bg-white rounded-2xl shadow-xl p-8">
-          <div className="mb-6 flex items-center justify-between">
-            <DialogHeader>
-              <DialogTitle className="text-2xl font-bold text-gray-900">
-                {event ? "Event bearbeiten" : "Neues Projekt"}
-              </DialogTitle>
-            </DialogHeader>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClose}
-              className="h-8 w-8 p-0 rounded-full"
-            >
-              <span className="sr-only">Close</span>
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </Button>
+      <DialogContent className="max-w-2xl w-[95vw] max-h-[85vh] overflow-hidden p-0 sm:w-full sm:max-h-[90vh] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
+        <div className="bg-white rounded-2xl shadow-xl flex flex-col h-full">
+          {/* Fixed Header */}
+          <div className="flex-shrink-0 p-6 pb-4 border-b border-gray-100">
+            <div className="flex items-center justify-between">
+              <DialogHeader>
+                <DialogTitle className="text-2xl font-bold text-gray-900">
+                  {event ? "Event bearbeiten" : "Neues Projekt"}
+                </DialogTitle>
+              </DialogHeader>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onClose}
+                className="h-8 w-8 p-0 rounded-full"
+              >
+                <span className="sr-only">Close</span>
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </Button>
+            </div>
           </div>
 
-          <form className="space-y-6">
+          {/* Scrollable Content */}
+          <div className="flex-1 overflow-y-auto p-6 pt-4">
+            <form className="space-y-6">
             {/* Title */}
             <div className="space-y-2">
               <label htmlFor="title" className="block text-sm font-medium text-gray-700">
@@ -343,8 +348,12 @@ export function EventEditDialog({ isOpen, onClose, event, onSave }: EventEditDia
               />
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+            </form>
+          </div>
+
+          {/* Fixed Footer */}
+          <div className="flex-shrink-0 p-6 pt-4 border-t border-gray-200 bg-gray-50 rounded-b-2xl">
+            <div className="flex justify-end gap-3">
               <Button
                 type="button"
                 variant="outline"
@@ -361,7 +370,7 @@ export function EventEditDialog({ isOpen, onClose, event, onSave }: EventEditDia
                 Speichern
               </Button>
             </div>
-          </form>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
