@@ -51,11 +51,19 @@ export async function createServerSupabaseClient(request: NextRequest) {
   // Set the session if we found tokens
   if (accessToken) {
     try {
-      await supabase.auth.setSession({
+      const { data, error } = await supabase.auth.setSession({
         access_token: accessToken,
         refresh_token: refreshToken || ''
       })
-      console.log('✅ Server Auth: Session set successfully')
+      
+      if (error) {
+        console.warn('⚠️ Server Auth: Session set error:', error.message)
+      } else {
+        console.log('✅ Server Auth: Session set successfully', {
+          hasUser: !!data?.user,
+          userId: data?.user?.id
+        })
+      }
     } catch (error) {
       console.warn('⚠️ Server Auth: Could not set session in API route:', error)
     }
