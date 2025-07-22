@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 
 interface Employee {
@@ -141,6 +141,92 @@ export function useEmployees() {
     }
   }, [])
 
+  // Fetch employees with status for a specific event
+  const fetchEmployeesWithStatus = useCallback(async (eventId: string) => {
+    try {
+      setLoading(true)
+      setError(null)
+      
+      console.log(`Fetching employees with status for event: ${eventId}`)
+      
+      // First get all employees
+      const { data: allEmployees, error: employeesError } = await supabase
+        .from('employees')
+        .select('id, name, user_id, role, phone_number, email, employment_type, is_always_needed, last_worked_date, total_hours_worked, created_at, updated_at')
+        .order('name')
+
+      if (employeesError) {
+        throw employeesError
+      }
+
+      // Then get all statuses for this event
+      const { data: statuses, error: statusError } = await supabase
+        .from('employee_event_status')
+        .select('employee_id, status, responded_at')
+        .eq('event_id', eventId)
+
+      if (statusError) {
+        throw statusError
+      }
+
+      // Create a map of employee ID to status
+      const statusMap: Record<string, string> = {}
+      statuses?.forEach(status => {
+        statusMap[status.employee_id] = status.status
+      })
+
+      // Combine employees with their statuses
+      const employeesWithStatus = allEmployees?.map(employee => ({
+        ...employee,
+        employee_event_status: statusMap[employee.id] ? [{
+          status: statusMap[employee.id],
+          event_id: eventId
+        }] : []
+      }))
+
+      console.log(`Fetched ${employeesWithStatus?.length || 0} employees with status for event ${eventId}`)
+      setEmployees(employeesWithStatus || [])
+      return employeesWithStatus || []
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch employees with status'
+      console.error('Error fetching employees with status:', errorMessage)
+      setError(errorMessage)
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // Update employee status for a specific event
+  const updateEmployeeStatus = useCallback(async (employeeId: string, eventId: string, status: string) => {
+    try {
+      const response = await fetch('/api/employees/update-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          employee_id: employeeId,
+          event_id: eventId,
+          status: status
+        }),
+      })
+      
+      const result = await response.json()
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to update employee status')
+      }
+      
+      console.log(`Updated status for employee ${employeeId} in event ${eventId} to ${status}`)
+      return result.data
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update employee status'
+      console.error('Error updating employee status:', errorMessage)
+      throw err
+    }
+  }, [])
+
   return {
     employees,
     loading,
@@ -149,6 +235,8 @@ export function useEmployees() {
     createEmployee,
     updateEmployee,
     deleteEmployee,
-    getEmployeesForSelection
+    getEmployeesForSelection,
+    fetchEmployeesWithStatus,
+    updateEmployeeStatus
   }
 }

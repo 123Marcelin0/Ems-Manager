@@ -182,14 +182,137 @@ export async function PUT(request: Request) {
 
     if (employeesError) {
       console.error('Error fetching selected employees:', employeesError);
-      return NextResponse.json({ success: fals
-}  );
-  }: 500 }
-  tatus      { s
-curred' },n error ocknow : 'An unssager.meor ? errorrf Er instanceo erro error:se,success: fal
-      { n(sotResponse.j Nexrn retu
-   , error);:'o-assignments autign assr in workr('Erroerronsole.) {
-    coh (error} catc    });
+      return NextResponse.json({ success: false, error: employeesError.message }, { status: 500 });
+    }
+
+    if (!selectedEmployees || selectedEmployees.length === 0) {
+      return NextResponse.json({
+        success: true,
+        data: [],
+        message: 'No selected employees found for this event'
+      });
+    }
+
+    // Get work areas for this event
+    const { data: workAreas, error: workAreasError } = await supabaseAdmin
+      .from('work_area_requirements')
+      .select(`
+        id, name, location, max_capacity, role_requirements,
+        work_areas(id, name, location)
+      `)
+      .eq('event_id', event_id)
+      .eq('is_active', true);
+
+    if (workAreasError) {
+      console.error('Error fetching work areas:', workAreasError);
+      return NextResponse.json({ success: false, error: workAreasError.message }, { status: 500 });
+    }
+
+    if (!workAreas || workAreas.length === 0) {
+      return NextResponse.json({
+        success: true,
+        data: [],
+        message: 'No available work areas for this event'
+      });
+    }
+
+    // Clear existing assignments for this event
+    await supabaseAdmin
+      .from('work_assignments')
+      .delete()
+      .eq('event_id', event_id);
+
+    // Auto-assignment algorithm
+    const assignments = [];
+    const employeePool = [...selectedEmployees];
+    let assignedToArea = 0;
+
+    for (const workArea of workAreas) {
+      // Assign employees based on role requirements
+      const roleRequirements = workArea.role_requirements || {};
+      
+      for (const [role, requiredCount] of Object.entries(roleRequirements)) {
+        if (typeof requiredCount !== 'number' || requiredCount <= 0) continue;
+
+        // Find employees with matching role
+        const matchingEmployees = employeePool.filter(emp => 
+          emp.employee?.role === role
+        );
+
+        const toAssign = Math.min(requiredCount, matchingEmployees.length, workArea.max_capacity - assignedToArea);
+
+        for (let i = 0; i < toAssign; i++) {
+          const employee = matchingEmployees[i];
+          
+          assignments.push({
+            employee_id: employee.employee_id,
+            work_area_id: workArea.id,
+            event_id: event_id
+          });
+
+          // Remove from pool to avoid double assignment
+          const poolIndex = employeePool.findIndex(emp => emp.employee_id === employee.employee_id);
+          if (poolIndex > -1) {
+            employeePool.splice(poolIndex, 1);
+          }
+
+          assignedToArea++;
+        }
+      }
+
+      // Fill remaining capacity with any available employees
+      while (assignedToArea < workArea.max_capacity && employeePool.length > 0) {
+        const employee = employeePool.shift();
+        
+        assignments.push({
+          employee_id: employee.employee_id,
+          work_area_id: workArea.id,
+          event_id: event_id
+        });
+
+        assignedToArea++;
+      }
+    }
+
+    // Insert all assignments
+    if (assignments.length > 0) {
+      const { data, error } = await supabaseAdmin
+        .from('work_assignments')
+        .insert(assignments)
+        .select(`
+          id,
+          employee_id,
+          work_area_id,
+          event_id,
+          assigned_at,
+          employee:employees(id, name, role, phone_number),
+          work_area:work_areas(id, name, location)
+        `);
+
+      if (error) {
+        console.error('Error creating assignments:', error);
+        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: data || [],
+        message: `Successfully assigned ${assignments.length} employees to work areas`
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: [],
+      message: 'No assignments created'
+    });
+  } catch (error) {
+    console.error('Error in work assignments auto-assign:', error);
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : 'An unknown error occurred' },
+      { status: 500 }
+    );
+  }    });
   ed'
 reatnments ce: 'No assigmessag[],
          data: e,

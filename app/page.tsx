@@ -38,7 +38,7 @@ interface Event {
 
 function DashboardContent() {
   // Use real Supabase data
-  const { employees: dbEmployees, loading: employeesLoading, getEmployeesForSelection } = useEmployees();
+  const { employees: dbEmployees, loading: employeesLoading, getEmployeesForSelection, fetchEmployeesWithStatus, updateEmployeeStatus } = useEmployees();
   const { events: dbEvents, loading: eventsLoading, fetchEvents } = useEvents();
   // Use global event context - no longer need to manage selectedEvent locally
   const { selectedEvent } = useEventContext();
@@ -424,20 +424,80 @@ function DashboardContent() {
     handleStatusChange(employeeId, newStatus as any);
   };
 
-  // Initialize default employee statuses when event changes
+  // Load employee statuses when event changes
   useEffect(() => {
-    if (selectedEvent?.id && dbEmployees.length > 0) {
-      // Set default statuses: "not-selected" for most, "always-needed" for those marked in database
-      dbEmployees.forEach(employee => {
-        const defaultStatus = employee.is_always_needed ? "always-needed" : "not-selected";
-        // Only set if employee doesn't already have a status for this event
-        const currentEmployee = finalEmployees.find(emp => emp.id === employee.id);
-        if (!currentEmployee || currentEmployee.status === "available") {
-          handleStatusChange(employee.id, defaultStatus);
-        }
-      });
-    }
-  }, [selectedEvent?.id, dbEmployees.length]);
+    const loadEmployeeStatuses = async () => {
+      if (!selectedEvent?.id || dbEmployees.length === 0) return;
+      
+      try {
+        console.log(`Loading employee statuses for event: ${selectedEvent.id}`);
+        
+        // Fetch employees with their statuses for this event
+        const employeesWithStatus = await fetchEmployeesWithStatus(selectedEvent.id);
+        
+        // Transform to match UI format and set local state
+        const transformedEmployees = employeesWithStatus.map(emp => {
+          // Get the status from the employee_event_status array
+          const eventStatus = emp.employee_event_status?.[0]?.status;
+          
+          // Map database status to UI status
+          let uiStatus = "not-selected"; // default
+          if (eventStatus) {
+            switch (eventStatus) {
+              case 'available':
+                uiStatus = "available";
+                break;
+              case 'selected':
+                uiStatus = "selected";
+                break;
+              case 'unavailable':
+                uiStatus = "unavailable";
+                break;
+              case 'always_needed':
+                uiStatus = "always-needed";
+                break;
+              case 'not_asked':
+              default:
+                uiStatus = "not-selected";
+                break;
+            }
+          } else if (emp.is_always_needed) {
+            // If no status but employee is always needed, set to always-needed
+            uiStatus = "always-needed";
+          }
+          
+          return {
+            id: emp.id,
+            name: emp.name,
+            userId: emp.user_id,
+            lastSelection: emp.last_worked_date ? new Date(emp.last_worked_date).toLocaleString() : "Nie",
+            status: uiStatus,
+            notes: `${emp.role} - ${emp.employment_type === 'fixed' ? 'Festangestellt' : 'Teilzeit'}`
+          };
+        });
+        
+        setLocalEmployees(transformedEmployees);
+        console.log(`Loaded ${transformedEmployees.length} employees with statuses for event ${selectedEvent.id}`);
+        
+      } catch (error) {
+        console.error('Error loading employee statuses:', error);
+        
+        // Fallback: set default statuses
+        const defaultEmployees = dbEmployees.map(emp => ({
+          id: emp.id,
+          name: emp.name,
+          userId: emp.user_id,
+          lastSelection: emp.last_worked_date ? new Date(emp.last_worked_date).toLocaleString() : "Nie",
+          status: emp.is_always_needed ? "always-needed" : "not-selected",
+          notes: `${emp.role} - ${emp.employment_type === 'fixed' ? 'Festangestellt' : 'Teilzeit'}`
+        }));
+        
+        setLocalEmployees(defaultEmployees);
+      }
+    };
+    
+    loadEmployeeStatuses();
+  }, [selectedEvent?.id, dbEmployees.length, fetchEmployeesWithStatus]);
 
   // Calendar toggle functionality removed
 
@@ -463,59 +523,83 @@ function DashboardContent() {
 
 
   const handleStatusChange = async (employeeId: string, newStatus: EmployeeStatus) => {
-    // Initialize localEmployees if not already done
-    if (localEmployees.length === 0) {
-      const baseEmployees = dbEmployees.length === 0 ? exampleEmployees : employees;
-      setLocalEmployees(baseEmployees.map((employee: any) => 
+    // Update employee status in local state immediately for UI responsiveness
+    setLocalEmployees((prev: any[]) => {
+      const updated = prev.map((employee: any) => 
         employee.id === employeeId 
           ? { 
               ...employee, 
               status: newStatus,
+              // Update last selection time for selected employees
               lastSelection: newStatus === "selected" ? new Date().toLocaleDateString('de-DE') + ', ' + new Date().toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'}) : employee.lastSelection
             }
           : employee
-      ));
-    } else {
-      // Update employee status in local state immediately for UI responsiveness
-      setLocalEmployees((prev: any[]) => {
-        const updated = prev.map((employee: any) => 
-          employee.id === employeeId 
-            ? { 
-                ...employee, 
-                status: newStatus,
-                // Update last selection time for selected employees
-                lastSelection: newStatus === "selected" ? new Date().toLocaleDateString('de-DE') + ', ' + new Date().toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'}) : employee.lastSelection
-              }
-            : employee
-        );
-        
-        console.log('🔄 Updated local employee status:', employeeId, 'to', newStatus);
-        return updated;
-      });
-    }
+      );
+      
+      console.log('🔄 Updated local employee status:', employeeId, 'to', newStatus);
+      return updated;
+    });
     
     // Update employee event status in database
     if (selectedEvent?.id) {
       try {
-        const response = await fetch('/api/employees/update-status', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            employee_id: employeeId,
-            event_id: selectedEvent.id,
-            status: newStatus
-          }),
-        });
+        console.log(`Updating status for employee ${employeeId} to ${newStatus} for event ${selectedEvent.id}`);
         
-        const result = await response.json();
+        await updateEmployeeStatus(employeeId, selectedEvent.id, newStatus);
         
-        if (!result.success) {
-          console.error('Error updating employee status:', result.error);
-        }
+        console.log('✅ Successfully updated employee status in database');
+        
+        // Optionally refresh employee list after a delay to ensure consistency
+        setTimeout(() => {
+          if (selectedEvent?.id) {
+            fetchEmployeesWithStatus(selectedEvent.id).then(employeesWithStatus => {
+              const transformedEmployees = employeesWithStatus.map(emp => {
+                const eventStatus = emp.employee_event_status?.[0]?.status;
+                let uiStatus = "not-selected";
+                if (eventStatus) {
+                  switch (eventStatus) {
+                    case 'available': uiStatus = "available"; break;
+                    case 'selected': uiStatus = "selected"; break;
+                    case 'unavailable': uiStatus = "unavailable"; break;
+                    case 'always_needed': uiStatus = "always-needed"; break;
+                    case 'not_asked':
+                    default: uiStatus = "not-selected"; break;
+                  }
+                } else if (emp.is_always_needed) {
+                  uiStatus = "always-needed";
+                }
+                
+                return {
+                  id: emp.id,
+                  name: emp.name,
+                  userId: emp.user_id,
+                  lastSelection: emp.last_worked_date ? new Date(emp.last_worked_date).toLocaleString() : "Nie",
+                  status: uiStatus,
+                  notes: `${emp.role} - ${emp.employment_type === 'fixed' ? 'Festangestellt' : 'Teilzeit'}`
+                };
+              });
+              
+              setLocalEmployees(transformedEmployees);
+            }).catch(error => {
+              console.error('Error refreshing employee statuses:', error);
+            });
+          }
+        }, 1000);
+        
       } catch (error) {
-        console.error('Error updating employee status:', error);
+        console.error('❌ Error updating employee status:', error);
+        
+        // Revert local state on error
+        setLocalEmployees((prev: any[]) => {
+          return prev.map((employee: any) => 
+            employee.id === employeeId 
+              ? { 
+                  ...employee, 
+                  status: employee.status // Keep original status
+                }
+              : employee
+          );
+        });
       }
     }
     

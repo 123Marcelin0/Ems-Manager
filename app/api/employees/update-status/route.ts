@@ -61,7 +61,7 @@ export async function POST(request: Request) {
         });
       }
 
-      // Update employee status directly in the table (since function doesn't exist yet)
+      // Update employee status with proper error handling and timestamps
       const { data, error } = await supabaseAdmin
         .from('employee_event_status')
         .upsert({
@@ -76,6 +76,9 @@ export async function POST(request: Request) {
         })
         .select()
         .single();
+        
+      // Log the operation for debugging
+      console.log(`Updated status for employee ${employee_id} in event ${event_id} to ${dbStatus}:`, data);
 
       if (error) {
         console.error('Error updating employee status:', error);
