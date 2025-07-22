@@ -119,12 +119,15 @@ export function WorkAreaOverview({
   const workAreas = dbWorkAreasTransformed.length > 0 ? dbWorkAreasTransformed : propWorkAreas
 
   // Use real employees if available, otherwise fall back to props
+  // For display purposes, show all available employees (including example ones)
+  // But for assignment purposes, only use real employees
   const realAvailableEmployees = selectedEmployeesForEvent.length > 0 ? selectedEmployeesForEvent : availableEmployees
+  const displayEmployees = availableEmployees.length > 0 ? availableEmployees : selectedEmployeesForEvent
 
   // Check if all employees are distributed
   const totalRequired = workAreas.reduce((total, area) => total + area.maxCapacity, 0)
   const totalAssigned = workAreas.reduce((total, area) => total + area.currentAssigned, 0)
-  const unassignedEmployees = realAvailableEmployees.filter(employee => {
+  const unassignedEmployees = displayEmployees.filter(employee => {
     return !workAreas.some(area => 
       area.assignedEmployees.some(assignedEmp => assignedEmp.id === employee.id)
     )
@@ -134,7 +137,7 @@ export function WorkAreaOverview({
   // Auto assignment hook
   const { handleAutoAssign, handleRedoAssignment } = useAutoAssignment({
     workAreas,
-    availableEmployees: realAvailableEmployees,
+    availableEmployees: displayEmployees,
     onAssignEmployee: async (workAreaId: string, employee: Employee) => {
       if (selectedEvent?.id) {
         try {
@@ -211,8 +214,8 @@ export function WorkAreaOverview({
     )
   }
 
-  // Check if there are no real employees available for assignment
-  if (selectedEmployeesForEvent.length === 0 && transformedEmployees.length === 0) {
+  // Check if there are no employees available for display at all
+  if (displayEmployees.length === 0 && selectedEmployeesForEvent.length === 0) {
     return (
       <div className="p-8 text-center text-gray-500">
         <div className="mb-4">
@@ -220,11 +223,13 @@ export function WorkAreaOverview({
         </div>
         <h3 className="text-lg font-medium text-gray-900 mb-2">Keine Mitarbeiter verfügbar</h3>
         <p className="text-gray-600 mb-4">
-          Es sind keine Mitarbeiter in der Datenbank verfügbar, die Arbeitsbereichen zugewiesen werden können.
+          Es sind keine Mitarbeiter verfügbar, die angezeigt werden können.
         </p>
-        <p className="text-sm text-gray-500">
-          Hinweis: Beispiel-Mitarbeiter können nicht zu Arbeitsbereichen zugewiesen werden.
-        </p>
+        {selectedEmployeesForEvent.length === 0 && displayEmployees.some(emp => emp.id.startsWith('emp-')) && (
+          <p className="text-sm text-gray-500">
+            Hinweis: Beispiel-Mitarbeiter können nicht zu Arbeitsbereichen zugewiesen werden.
+          </p>
+        )}
       </div>
     )
   }
@@ -396,7 +401,7 @@ export function WorkAreaOverview({
         {/* Work Areas Grid */}
         <WorkAreasGrid
           workAreas={workAreas}
-          availableEmployees={realAvailableEmployees}
+          availableEmployees={displayEmployees}
           draggedEmployee={draggedEmployee}
           dragOverArea={dragOverArea}
           onAssignEmployee={async (workAreaId: string, employee: Employee) => {
