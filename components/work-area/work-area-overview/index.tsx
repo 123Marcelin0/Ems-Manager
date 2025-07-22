@@ -81,9 +81,8 @@ export function WorkAreaOverview({
 
   // Get employees that are selected for this event
   const selectedEmployeesForEvent = transformedEmployees.filter(emp => {
-    // Check if employee has status 'selected' for this event
-    // This would need to be fetched from employee_event_status table
-    return true // For now, show all employees
+    // Only include real employees (not example employees) for work area assignments
+    return !emp.id.startsWith('emp-') // Filter out example employees
   })
 
   // Transform database work areas to UI format and include assignments
@@ -139,6 +138,11 @@ export function WorkAreaOverview({
     onAssignEmployee: async (workAreaId: string, employee: Employee) => {
       if (selectedEvent?.id) {
         try {
+          // Check if this is an example employee
+          if (employee.id.startsWith('emp-')) {
+            console.warn('Cannot assign example employee to work area')
+            return
+          }
           await assignEmployee(employee.id, workAreaId, selectedEvent.id)
           console.log(`Assigned ${employee.name} to work area ${workAreaId}`)
         } catch (error) {
@@ -149,6 +153,11 @@ export function WorkAreaOverview({
     onRemoveEmployee: async (workAreaId: string, employeeId: string) => {
       if (selectedEvent?.id) {
         try {
+          // Check if this is an example employee
+          if (employeeId.startsWith('emp-')) {
+            console.warn('Cannot remove example employee assignment')
+            return
+          }
           await removeAssignment(employeeId, selectedEvent.id)
           console.log(`Removed employee ${employeeId} from work area ${workAreaId}`)
         } catch (error) {
@@ -202,6 +211,24 @@ export function WorkAreaOverview({
     )
   }
 
+  // Check if there are no real employees available for assignment
+  if (selectedEmployeesForEvent.length === 0 && transformedEmployees.length === 0) {
+    return (
+      <div className="p-8 text-center text-gray-500">
+        <div className="mb-4">
+          <span className="text-4xl">👥</span>
+        </div>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">Keine Mitarbeiter verfügbar</h3>
+        <p className="text-gray-600 mb-4">
+          Es sind keine Mitarbeiter in der Datenbank verfügbar, die Arbeitsbereichen zugewiesen werden können.
+        </p>
+        <p className="text-sm text-gray-500">
+          Hinweis: Beispiel-Mitarbeiter können nicht zu Arbeitsbereichen zugewiesen werden.
+        </p>
+      </div>
+    )
+  }
+
   // Drag handlers
   const handleDragStart = (e: React.DragEvent, employee: Employee, fromAreaId?: string) => {
     setDraggedEmployee(employee)
@@ -251,6 +278,11 @@ export function WorkAreaOverview({
     
     if (draggedEmployee && selectedEvent?.id) {
       try {
+        // Check if this is an example employee
+        if (draggedEmployee.id.startsWith('emp-')) {
+          console.warn('Cannot assign example employee to work area')
+          return
+        }
         // If dragging from another work area, the assignment will be updated automatically
         // If dragging from unassigned list, create new assignment
         await assignEmployee(draggedEmployee.id, areaId, selectedEvent.id)
@@ -370,6 +402,11 @@ export function WorkAreaOverview({
           onAssignEmployee={async (workAreaId: string, employee: Employee) => {
             if (selectedEvent?.id) {
               try {
+                // Check if this is an example employee
+                if (employee.id.startsWith('emp-')) {
+                  console.warn('Cannot assign example employee to work area')
+                  return
+                }
                 await assignEmployee(employee.id, workAreaId, selectedEvent.id)
                 console.log(`Assigned ${employee.name} to work area ${workAreaId}`)
               } catch (error) {
@@ -380,6 +417,11 @@ export function WorkAreaOverview({
           onRemoveEmployee={async (workAreaId: string, employeeId: string) => {
             if (selectedEvent?.id) {
               try {
+                // Check if this is an example employee
+                if (employeeId.startsWith('emp-')) {
+                  console.warn('Cannot remove example employee assignment')
+                  return
+                }
                 await removeAssignment(employeeId, selectedEvent.id)
                 console.log(`Removed employee ${employeeId} from work area ${workAreaId}`)
               } catch (error) {

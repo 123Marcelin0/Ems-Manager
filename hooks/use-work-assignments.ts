@@ -66,6 +66,12 @@ export function useWorkAssignments() {
       
       console.log(`Assigning employee ${employeeId} to work area ${workAreaId} for event ${eventId}`)
       
+      // Check if this is an example employee (starts with 'emp-')
+      if (employeeId.startsWith('emp-')) {
+        console.log('⚠️ Cannot assign example employee to work area - database operation skipped')
+        throw new Error('Cannot assign example employees to work areas. Please use real employees from the database.')
+      }
+      
       const response = await fetch('/api/work-assignments', {
         method: 'POST',
         headers: {
@@ -122,6 +128,12 @@ export function useWorkAssignments() {
       setError(null)
       
       console.log(`Removing assignment for employee ${employeeId} from event ${eventId}`)
+      
+      // Check if this is an example employee (starts with 'emp-')
+      if (employeeId.startsWith('emp-')) {
+        console.log('⚠️ Cannot remove example employee assignment - database operation skipped')
+        throw new Error('Cannot remove example employee assignments. Please use real employees from the database.')
+      }
       
       const response = await fetch('/api/work-assignments', {
         method: 'POST',
