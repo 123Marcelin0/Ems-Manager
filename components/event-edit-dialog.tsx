@@ -112,7 +112,7 @@ export function EventEditDialog({ isOpen, onClose, event, onSave }: EventEditDia
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl w-[95vw] max-h-[85vh] overflow-hidden p-0 sm:w-full sm:max-h-[90vh] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
+      <DialogContent className="overflow-hidden p-0 dialog-centered">
         <div className="bg-white rounded-2xl shadow-xl flex flex-col h-full">
           {/* Fixed Header */}
           <div className="flex-shrink-0 p-6 pb-4 border-b border-gray-100">

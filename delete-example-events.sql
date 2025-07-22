@@ -21,7 +21,7 @@ WHERE event_id IN (
     SELECT id FROM events 
     WHERE title LIKE '%Test%' 
     OR title LIKE '%Example%' 
-    OR title LIKE '%Demo%'
+    OR title LIKE '%Demo%
     OR title = 'xdrdtzydr'
     OR description LIKE '%test%'
     OR description LIKE '%example%'

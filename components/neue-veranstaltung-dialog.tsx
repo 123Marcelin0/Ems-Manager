@@ -43,7 +43,7 @@ function TemplateSaveDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
         <DialogHeader>
           <DialogTitle>Vorlage speichern</DialogTitle>
         </DialogHeader>
@@ -309,7 +309,7 @@ export default function NeueVeranstaltungDialog({ isOpen, onClose, onSave }: Neu
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-2xl sm:rounded-lg p-6 bg-white shadow-xl relative">
+        <DialogContent className="max-w-2xl sm:rounded-lg p-0 bg-white shadow-xl fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
           {/* Close Button */}
           <DialogClose asChild>
             <button
@@ -320,7 +320,7 @@ export default function NeueVeranstaltungDialog({ isOpen, onClose, onSave }: Neu
               <X className="h-5 w-5" />
             </button>
           </DialogClose>
-          <div className="p-2 sm:p-4 md:p-8">
+          <div className="p-6 sm:p-8">
             {/* Header */}
             <div className="mb-6">
               <DialogTitle className="text-2xl font-bold text-gray-900 mb-2">

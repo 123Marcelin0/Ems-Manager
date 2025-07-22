@@ -35,3 +35,52 @@ div.bg-white.rounded-3xl {
   transition: none !important;
   animation: none !important;
 }
+
+/* Ensure dialog is perfectly centered */
+[data-radix-dialog-content] {
+  position: fixed !important;
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  z-index: 50 !important;
+  max-height: 85vh !important;
+  width: 95vw !important;
+  max-width: 48rem !important;
+}
+
+@media (min-width: 640px) {
+  [data-radix-dialog-content] {
+    width: 100% !important;
+    max-height: 90vh !important;
+  }
+}
+
+/* Ensure dialog overlay covers full screen */
+[data-radix-dialog-overlay] {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 50 !important;
+  background-color: rgba(0, 0, 0, 0.8) !important;
+}
+
+/* Custom dialog centering class */
+.dialog-centered {
+  position: fixed !important;
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  z-index: 50 !important;
+  max-height: 85vh !important;
+  width: 95vw !important;
+  max-width: 48rem !important;
+  border-radius: 1rem !important;
+  background: white !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
+}
+
+@media (min-width: 640px) {
+  .dialog-centered {
+    width: 100% !important;
+    max-height: 90vh !important;
+  }
+}
