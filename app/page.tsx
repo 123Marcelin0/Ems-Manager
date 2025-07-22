@@ -199,6 +199,16 @@ function DashboardContent() {
     }
   }, [events, selectedEvent, employeesLoading, eventsLoading])
 
+  // Update required employees when selected event changes
+  useEffect(() => {
+    if (selectedEvent) {
+      const alwaysNeededCount = finalEmployees.filter(emp => emp.status === "always-needed").length;
+      const neededAfterAlwaysNeeded = Math.max(0, selectedEvent.employeesNeeded - alwaysNeededCount);
+      setRequiredEmployees(neededAfterAlwaysNeeded.toString());
+      console.log(`Updated required employees for event ${selectedEvent.name}: ${neededAfterAlwaysNeeded}`);
+    }
+  }, [selectedEvent, finalEmployees])
+
   // Calculate stats based on current page
   const stats = currentPage === "sign-out-table" ? {
     total: signOutRecords.length,
@@ -223,10 +233,18 @@ function DashboardContent() {
   })
 
   const handleRandomSelection = async () => {
-    if (!selectedEvent) return;
+    console.log('🎲 handleRandomSelection called:', { selectedEvent: selectedEvent?.id, requiredEmployees, count: Number.parseInt(requiredEmployees) });
+    
+    if (!selectedEvent) {
+      console.log('❌ No selected event');
+      return;
+    }
     
     const count = Number.parseInt(requiredEmployees) || 0
-    if (count <= 0) return
+    if (count <= 0) {
+      console.log('❌ Invalid count:', count);
+      return;
+    }
 
     try {
       // First, try to use the API endpoint for random selection
@@ -275,10 +293,15 @@ function DashboardContent() {
       }
       
       // Fallback to client-side random selection if API fails
+      console.log('📊 Available employees for selection:', finalEmployees.length);
+      console.log('📊 Employee statuses:', finalEmployees.map(e => ({ name: e.name, status: e.status })));
+      
       // Filter selectable employees, excluding those with "always-needed" status
       const selectableEmployees = finalEmployees.filter((e) => 
         e.status !== "always-needed" && (e.status === "available" || e.status === "not-selected")
       )
+      
+      console.log('📊 Selectable employees:', selectableEmployees.length);
       
       // Sort by lastSelection date - prioritize those who haven't been selected the longest
       // Those who were never selected (null/undefined lastSelection) come first
@@ -432,52 +455,57 @@ function DashboardContent() {
       try {
         console.log(`Loading employee statuses for event: ${selectedEvent.id}`);
         
-        // Fetch employees with their statuses for this event
-        const employeesWithStatus = await fetchEmployeesWithStatus(selectedEvent.id);
-        
-        // Transform to match UI format and set local state
-        const transformedEmployees = employeesWithStatus.map(emp => {
-          // Get the status from the employee_event_status array
-          const eventStatus = emp.employee_event_status?.[0]?.status;
+        // Only try to fetch if fetchEmployeesWithStatus is available
+        if (fetchEmployeesWithStatus) {
+          // Fetch employees with their statuses for this event
+          const employeesWithStatus = await fetchEmployeesWithStatus(selectedEvent.id);
           
-          // Map database status to UI status
-          let uiStatus = "not-selected"; // default
-          if (eventStatus) {
-            switch (eventStatus) {
-              case 'available':
-                uiStatus = "available";
-                break;
-              case 'selected':
-                uiStatus = "selected";
-                break;
-              case 'unavailable':
-                uiStatus = "unavailable";
-                break;
-              case 'always_needed':
-                uiStatus = "always-needed";
-                break;
-              case 'not_asked':
-              default:
-                uiStatus = "not-selected";
-                break;
+          // Transform to match UI format and set local state
+          const transformedEmployees = employeesWithStatus.map(emp => {
+            // Get the status from the employee_event_status array
+            const eventStatus = emp.employee_event_status?.[0]?.status;
+            
+            // Map database status to UI status
+            let uiStatus = "not-selected"; // default
+            if (eventStatus) {
+              switch (eventStatus) {
+                case 'available':
+                  uiStatus = "available";
+                  break;
+                case 'selected':
+                  uiStatus = "selected";
+                  break;
+                case 'unavailable':
+                  uiStatus = "unavailable";
+                  break;
+                case 'always_needed':
+                  uiStatus = "always-needed";
+                  break;
+                case 'not_asked':
+                default:
+                  uiStatus = "not-selected";
+                  break;
+              }
+            } else if (emp.is_always_needed) {
+              // If no status but employee is always needed, set to always-needed
+              uiStatus = "always-needed";
             }
-          } else if (emp.is_always_needed) {
-            // If no status but employee is always needed, set to always-needed
-            uiStatus = "always-needed";
-          }
+            
+            return {
+              id: emp.id,
+              name: emp.name,
+              userId: emp.user_id,
+              lastSelection: emp.last_worked_date ? new Date(emp.last_worked_date).toLocaleString() : "Nie",
+              status: uiStatus,
+              notes: `${emp.role} - ${emp.employment_type === 'fixed' ? 'Festangestellt' : 'Teilzeit'}`
+            };
+          });
           
-          return {
-            id: emp.id,
-            name: emp.name,
-            userId: emp.user_id,
-            lastSelection: emp.last_worked_date ? new Date(emp.last_worked_date).toLocaleString() : "Nie",
-            status: uiStatus,
-            notes: `${emp.role} - ${emp.employment_type === 'fixed' ? 'Festangestellt' : 'Teilzeit'}`
-          };
-        });
-        
-        setLocalEmployees(transformedEmployees);
-        console.log(`Loaded ${transformedEmployees.length} employees with statuses for event ${selectedEvent.id}`);
+          setLocalEmployees(transformedEmployees);
+          console.log(`Loaded ${transformedEmployees.length} employees with statuses for event ${selectedEvent.id}`);
+        } else {
+          throw new Error('fetchEmployeesWithStatus function not available');
+        }
         
       } catch (error) {
         console.error('Error loading employee statuses:', error);
@@ -523,6 +551,8 @@ function DashboardContent() {
 
 
   const handleStatusChange = async (employeeId: string, newStatus: EmployeeStatus) => {
+    console.log('🔄 handleStatusChange called:', { employeeId, newStatus, selectedEvent: selectedEvent?.id });
+    
     // Update employee status in local state immediately for UI responsiveness
     setLocalEmployees((prev: any[]) => {
       const updated = prev.map((employee: any) => 
@@ -545,13 +575,16 @@ function DashboardContent() {
       try {
         console.log(`Updating status for employee ${employeeId} to ${newStatus} for event ${selectedEvent.id}`);
         
-        await updateEmployeeStatus(employeeId, selectedEvent.id, newStatus);
-        
-        console.log('✅ Successfully updated employee status in database');
+        if (updateEmployeeStatus) {
+          await updateEmployeeStatus(employeeId, selectedEvent.id, newStatus);
+          console.log('✅ Successfully updated employee status in database');
+        } else {
+          console.warn('updateEmployeeStatus function not available, status updated locally only');
+        }
         
         // Optionally refresh employee list after a delay to ensure consistency
         setTimeout(() => {
-          if (selectedEvent?.id) {
+          if (selectedEvent?.id && fetchEmployeesWithStatus) {
             fetchEmployeesWithStatus(selectedEvent.id).then(employeesWithStatus => {
               const transformedEmployees = employeesWithStatus.map(emp => {
                 const eventStatus = emp.employee_event_status?.[0]?.status;

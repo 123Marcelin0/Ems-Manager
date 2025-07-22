@@ -149,7 +149,7 @@ export function EmployeeTable({
                         <Badge
                           className={`border font-medium ${statusConfig[employee.status as keyof typeof statusConfig]?.color}`}
                         >
-                          {statusConfig[employee.status as keyof typeof statusConfig]?.label}
+                          {statusConfig[employee.status as keyof typeof statusConfig]?.label || employee.status}
                         </Badge>
                         <ChevronDown className="h-3 w-3 text-gray-400" />
                       </Button>
@@ -158,7 +158,10 @@ export function EmployeeTable({
                       {Object.entries(statusConfig).map(([key, config]) => (
                         <DropdownMenuItem
                           key={key}
-                          onClick={() => onStatusChange(employee.id, key)}
+                          onClick={() => {
+                            console.log('🔄 Status change clicked:', { employeeId: employee.id, newStatus: key, employeeName: employee.name });
+                            onStatusChange(employee.id, key);
+                          }}
                           className="cursor-pointer"
                         >
                           {config.label}
