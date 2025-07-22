@@ -171,7 +171,8 @@ export async function PUT(request: Request) {
     }
 
     // Get employees that are available or selected for this event
-    const { data: selectedEmployees, error: employeesError } = await supabaseAdmin
+    // First try to get employees with specific statuses
+    let { data: selectedEmployees, error: employeesError } = await supabaseAdmin
       .from('employee_event_status')
       .select(`
         employee_id,
@@ -179,6 +180,36 @@ export async function PUT(request: Request) {
       `)
       .eq('event_id', event_id)
       .in('status', ['selected', 'available']);
+
+    // If no employees found with specific statuses, get all employees for this event
+    if (!selectedEmployees || selectedEmployees.length === 0) {
+      const { data: allEventEmployees, error: allEmployeesError } = await supabaseAdmin
+        .from('employee_event_status')
+        .select(`
+          employee_id,
+          employee:employees(id, name, role, employment_type, is_always_needed)
+        `)
+        .eq('event_id', event_id);
+      
+      if (!allEmployeesError && allEventEmployees && allEventEmployees.length > 0) {
+        selectedEmployees = allEventEmployees;
+        console.log(`Using all ${selectedEmployees.length} employees for event ${event_id}`);
+      } else {
+        // If still no employees, get all employees and create default statuses
+        const { data: allEmployees, error: allEmpError } = await supabaseAdmin
+          .from('employees')
+          .select('id, name, role, employment_type, is_always_needed')
+          .limit(10); // Limit to prevent too many assignments
+        
+        if (!allEmpError && allEmployees && allEmployees.length > 0) {
+          selectedEmployees = allEmployees.map(emp => ({
+            employee_id: emp.id,
+            employee: emp
+          }));
+          console.log(`Using ${selectedEmployees.length} default employees for auto-assignment`);
+        }
+      }
+    }
 
     if (employeesError) {
       console.error('Error fetching selected employees:', employeesError);
