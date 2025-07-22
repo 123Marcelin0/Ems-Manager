@@ -144,9 +144,6 @@ export function useEmployees() {
   // Fetch employees with status for a specific event
   const fetchEmployeesWithStatus = useCallback(async (eventId: string) => {
     try {
-      setLoading(true)
-      setError(null)
-      
       console.log(`Fetching employees with status for event: ${eventId}`)
       
       // First get all employees
@@ -156,7 +153,13 @@ export function useEmployees() {
         .order('name')
 
       if (employeesError) {
+        console.error('Error fetching employees:', employeesError)
         throw employeesError
+      }
+
+      if (!allEmployees || allEmployees.length === 0) {
+        console.log('No employees found in database')
+        return []
       }
 
       // Then get all statuses for this event
@@ -166,7 +169,8 @@ export function useEmployees() {
         .eq('event_id', eventId)
 
       if (statusError) {
-        throw statusError
+        console.warn('Error fetching statuses (this is OK if no statuses exist yet):', statusError)
+        // Don't throw error for status fetch - it's OK if no statuses exist yet
       }
 
       // Create a map of employee ID to status
@@ -176,7 +180,7 @@ export function useEmployees() {
       })
 
       // Combine employees with their statuses
-      const employeesWithStatus = allEmployees?.map(employee => ({
+      const employeesWithStatus = allEmployees.map(employee => ({
         ...employee,
         employee_event_status: statusMap[employee.id] ? [{
           status: statusMap[employee.id],
@@ -184,16 +188,13 @@ export function useEmployees() {
         }] : []
       }))
 
-      console.log(`Fetched ${employeesWithStatus?.length || 0} employees with status for event ${eventId}`)
-      setEmployees(employeesWithStatus || [])
-      return employeesWithStatus || []
+      console.log(`Fetched ${employeesWithStatus.length} employees with status for event ${eventId}`)
+      return employeesWithStatus
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch employees with status'
       console.error('Error fetching employees with status:', errorMessage)
-      setError(errorMessage)
-      throw err
-    } finally {
-      setLoading(false)
+      // Don't set error state here, let the calling function handle it
+      return []
     }
   }, [])
 
