@@ -195,10 +195,9 @@ export async function PUT(request: Request) {
 
     // Get work areas for this event
     const { data: workAreas, error: workAreasError } = await supabaseAdmin
-      .from('work_area_requirements')
+      .from('work_areas')
       .select(`
-        id, name, location, max_capacity, role_requirements,
-        work_areas(id, name, location)
+        id, name, location, max_capacity, role_requirements
       `)
       .eq('event_id', event_id)
       .eq('is_active', true);
