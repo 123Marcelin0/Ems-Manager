@@ -455,15 +455,24 @@ function DashboardContent() {
   // Load employee statuses when event changes
   useEffect(() => {
     const loadEmployeeStatuses = async () => {
-      if (!selectedEvent?.id || dbEmployees.length === 0) {
-        console.log('Skipping employee status load:', { selectedEvent: selectedEvent?.id, dbEmployeesCount: dbEmployees.length });
+      if (!selectedEvent?.id) {
+        console.log('Skipping employee status load: no selected event');
+        return;
+      }
+      
+      if (dbEmployees.length === 0) {
+        console.log('Skipping employee status load: no database employees, using example employees');
+        // If no database employees, ensure we have example employees loaded
+        if (localEmployees.length === 0) {
+          setLocalEmployees(exampleEmployees);
+        }
         return;
       }
       
       try {
         console.log(`Loading employee statuses for event: ${selectedEvent.id}`);
         
-        // Try to fetch employees with status if function is available
+        // Always try to fetch employees with status
         if (fetchEmployeesWithStatus) {
           const employeesWithStatus = await fetchEmployeesWithStatus(selectedEvent.id);
           
@@ -511,6 +520,13 @@ function DashboardContent() {
             
             setLocalEmployees(transformedEmployees);
             console.log(`✅ Loaded ${transformedEmployees.length} employees with statuses for event ${selectedEvent.id}`);
+            
+            // Log status distribution for debugging
+            const statusCounts = transformedEmployees.reduce((acc, emp) => {
+              acc[emp.status] = (acc[emp.status] || 0) + 1;
+              return acc;
+            }, {});
+            console.log('📊 Status distribution:', statusCounts);
             return;
           }
         }
@@ -610,6 +626,50 @@ function DashboardContent() {
         if (updateEmployeeStatus) {
           await updateEmployeeStatus(employeeId, selectedEvent.id, newStatus);
           console.log('✅ Successfully updated employee status in database');
+          
+          // Force a refresh of employee statuses to ensure persistence
+          setTimeout(async () => {
+            if (fetchEmployeesWithStatus && selectedEvent?.id) {
+              try {
+                console.log('🔄 Refreshing employee statuses after update...');
+                const refreshedEmployees = await fetchEmployeesWithStatus(selectedEvent.id);
+                
+                if (refreshedEmployees && refreshedEmployees.length > 0) {
+                  const transformedEmployees = refreshedEmployees.map(emp => {
+                    const eventStatus = emp.employee_event_status?.[0]?.status;
+                    let uiStatus = "not-selected";
+                    if (eventStatus) {
+                      switch (eventStatus) {
+                        case 'available': uiStatus = "available"; break;
+                        case 'selected': uiStatus = "selected"; break;
+                        case 'unavailable': uiStatus = "unavailable"; break;
+                        case 'always_needed': uiStatus = "always-needed"; break;
+                        case 'not_asked':
+                        default: uiStatus = "not-selected"; break;
+                      }
+                    } else if (emp.is_always_needed) {
+                      uiStatus = "always-needed";
+                    }
+                    
+                    return {
+                      id: emp.id,
+                      name: emp.name,
+                      userId: emp.user_id,
+                      lastSelection: emp.last_worked_date ? new Date(emp.last_worked_date).toLocaleString() : "Nie",
+                      status: uiStatus,
+                      notes: `${emp.role} - ${emp.employment_type === 'fixed' ? 'Festangestellt' : 'Teilzeit'}`
+                    };
+                  });
+                  
+                  setLocalEmployees(transformedEmployees);
+                  console.log('✅ Employee statuses refreshed from database');
+                }
+              } catch (refreshError) {
+                console.error('Error refreshing employee statuses:', refreshError);
+              }
+            }
+          }, 500); // Small delay to ensure database write is complete
+          
         } else {
           console.warn('updateEmployeeStatus function not available, status updated locally only');
         }

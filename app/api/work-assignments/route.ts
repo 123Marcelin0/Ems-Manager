@@ -170,7 +170,7 @@ export async function PUT(request: Request) {
       }, { status: 400 });
     }
 
-    // Get employees that are selected for this event
+    // Get employees that are available or selected for this event
     const { data: selectedEmployees, error: employeesError } = await supabaseAdmin
       .from('employee_event_status')
       .select(`
@@ -178,7 +178,7 @@ export async function PUT(request: Request) {
         employee:employees(id, name, role, employment_type, is_always_needed)
       `)
       .eq('event_id', event_id)
-      .eq('status', 'selected');
+      .in('status', ['selected', 'available']);
 
     if (employeesError) {
       console.error('Error fetching selected employees:', employeesError);
@@ -224,21 +224,22 @@ export async function PUT(request: Request) {
     // Auto-assignment algorithm
     const assignments = [];
     const employeePool = [...selectedEmployees];
-    let assignedToArea = 0;
 
     for (const workArea of workAreas) {
+      let assignedToThisArea = 0; // Reset for each work area
+      
       // Assign employees based on role requirements
       const roleRequirements = workArea.role_requirements || {};
       
       for (const [role, requiredCount] of Object.entries(roleRequirements)) {
         if (typeof requiredCount !== 'number' || requiredCount <= 0) continue;
 
-        // Find employees with matching role
+        // Find employees with matching role that are still available
         const matchingEmployees = employeePool.filter(emp => 
           emp.employee?.role === role
         );
 
-        const toAssign = Math.min(requiredCount, matchingEmployees.length, workArea.max_capacity - assignedToArea);
+        const toAssign = Math.min(requiredCount, matchingEmployees.length, workArea.max_capacity - assignedToThisArea);
 
         for (let i = 0; i < toAssign; i++) {
           const employee = matchingEmployees[i];
@@ -255,12 +256,12 @@ export async function PUT(request: Request) {
             employeePool.splice(poolIndex, 1);
           }
 
-          assignedToArea++;
+          assignedToThisArea++;
         }
       }
 
       // Fill remaining capacity with any available employees
-      while (assignedToArea < workArea.max_capacity && employeePool.length > 0) {
+      while (assignedToThisArea < workArea.max_capacity && employeePool.length > 0) {
         const employee = employeePool.shift();
         
         assignments.push({
@@ -269,7 +270,7 @@ export async function PUT(request: Request) {
           event_id: event_id
         });
 
-        assignedToArea++;
+        assignedToThisArea++;
       }
     }
 
