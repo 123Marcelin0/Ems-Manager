@@ -82,9 +82,8 @@ export function useWorkAreas() {
       
       console.log(`🔍 Fetching work areas for event: ${eventId}`)
       
-      const endpoint = includeAssignments 
-        ? `/api/work-areas/detailed?eventId=${eventId}`
-        : `/api/work-areas?eventId=${eventId}`
+      // Always use the basic endpoint - don't try to use the detailed endpoint
+      const endpoint = `/api/work-areas?eventId=${eventId}`
       
       const headers = getHeaders()
       const response = await fetch(endpoint, { headers })
@@ -138,7 +137,7 @@ export function useWorkAreas() {
       console.log('🔍 Fetching all work areas')
       
       const headers = getHeaders()
-      const response = await fetch('/api/work-areas/detailed', { headers })
+      const response = await fetch('/api/work-areas', { headers })
       
       const contentType = response.headers.get('content-type');
       if (!response.ok) {
