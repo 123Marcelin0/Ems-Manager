@@ -6,10 +6,13 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Clock, CheckCircle, Settings, MoreHorizontal, Users, UserX, BarChart3, Calendar, MapPin, Euro, FileSpreadsheet, Download } from "lucide-react"
+import { Clock, CheckCircle, Settings, MoreHorizontal, Users, UserX, BarChart3, Calendar, MapPin, Euro, FileSpreadsheet, Download, RefreshCw } from "lucide-react"
 import { WorkAreaAssignment } from "./work-area-assignment"
 import { useWorkAreas } from "@/hooks/use-work-areas"
 import { useEmployees } from "@/hooks/use-employees"
+import { useEventWorkAreaSync } from "@/hooks/use-event-work-area-sync"
+import { useEventContext } from "@/hooks/use-event-context"
+import { supabase } from "@/lib/supabase"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -110,18 +113,159 @@ export function SignOutTable({
   // Hooks to get real data
   const { workAreas: dbWorkAreas, fetchWorkAreasByEvent } = useWorkAreas()
   const { employees: dbEmployees } = useEmployees()
+  const { selectedEvent: contextSelectedEvent } = useEventContext()
+  const { 
+    syncedWorkAreas, 
+    isLoading: syncLoading, 
+    error: syncError,
+    getWorkAreaAssignmentsForAttendance,
+    forceRefresh,
+    getLatestEvent
+  } = useEventWorkAreaSync()
+
+  // Use context event if no event prop is provided
+  const currentEvent = selectedEvent || contextSelectedEvent
 
   const [signOutRecords, setSignOutRecords] = useState<SignOutRecord[]>(mockSignOutData)
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null)
   const [editingHourlyRate, setEditingHourlyRate] = useState<string | null>(null)
+  const [employeeEventStatuses, setEmployeeEventStatuses] = useState<any[]>([])
+  const [statusLoading, setStatusLoading] = useState(false)
 
-  // Fetch work areas when selected event changes
+  // Auto-sync latest event if no event is selected
   useEffect(() => {
-    if (selectedEvent?.id) {
-      fetchWorkAreasByEvent(selectedEvent.id)
+    if (!currentEvent) {
+      const latestEvent = getLatestEvent()
+      if (latestEvent) {
+        console.log(`📋 Auto-selecting latest event for attendance: ${latestEvent.name}`)
+      }
     }
-  }, [selectedEvent?.id, fetchWorkAreasByEvent])
+  }, [currentEvent, getLatestEvent])
+
+  // Force refresh when component mounts to ensure latest data
+  useEffect(() => {
+    console.log('📋 SignOutTable: Component mounted, forcing refresh...')
+    forceRefresh()
+  }, []) // Remove forceRefresh from dependencies to prevent infinite loop
+
+  // Fetch employee event statuses for the current event
+  const fetchEmployeeEventStatuses = async (eventId: string) => {
+    if (!eventId) return
+    
+    setStatusLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('employee_event_status')
+        .select(`
+          *,
+          employees (
+            id,
+            name,
+            phone_number
+          )
+        `)
+        .eq('event_id', eventId)
+
+      if (error) throw error
+      setEmployeeEventStatuses(data || [])
+    } catch (error) {
+      console.error('Error fetching employee event statuses:', error)
+      setEmployeeEventStatuses([])
+    } finally {
+      setStatusLoading(false)
+    }
+  }
+
+  // Fetch employee statuses when current event changes
+  useEffect(() => {
+    if (currentEvent?.id) {
+      fetchEmployeeEventStatuses(currentEvent.id)
+    }
+  }, [currentEvent?.id])
+
+  // Set up real-time subscription for employee event status changes
+  useEffect(() => {
+    if (!currentEvent?.id) return
+
+    const subscription = supabase
+      .channel('employee-status-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'employee_event_status',
+        filter: `event_id=eq.${currentEvent.id}`
+      }, () => {
+        console.log('📡 SignOutTable: Received real-time employee status change')
+        fetchEmployeeEventStatuses(currentEvent.id)
+      })
+      .subscribe()
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [currentEvent?.id])
+
+  // Listen for custom employee status change events from Mitteilungen
+  useEffect(() => {
+    const handleEmployeeStatusChange = (event: CustomEvent) => {
+      const { employeeId, newStatus, eventId } = event.detail
+      console.log('📡 SignOutTable: Received custom employee status change event:', { employeeId, newStatus, eventId })
+      
+      if (eventId === currentEvent?.id) {
+        // Refresh employee statuses when status changes occur
+        fetchEmployeeEventStatuses(currentEvent.id)
+      }
+    }
+
+    window.addEventListener('employeeStatusChanged', handleEmployeeStatusChange as EventListener)
+    
+    // Listen for work area configuration changes
+    const handleWorkAreasChanged = () => {
+      console.log('📡 SignOutTable: Received work areas changed event, refreshing...')
+      forceRefresh()
+    }
+
+    window.addEventListener('workAreasChanged', handleWorkAreasChanged as EventListener)
+    
+    return () => {
+      window.removeEventListener('employeeStatusChanged', handleEmployeeStatusChange as EventListener)
+      window.removeEventListener('workAreasChanged', handleWorkAreasChanged as EventListener)
+    }
+  }, [currentEvent?.id])
+
+  // Set up real-time subscription for work area changes (temporarily disabled)
+  useEffect(() => {
+    if (!currentEvent?.id) return
+
+    // Temporarily disabled to prevent infinite refresh loops
+    console.log('📡 SignOutTable: Real-time subscriptions disabled for event:', currentEvent.id)
+
+    // const workAreaSubscription = supabase
+    //   .channel('work-area-changes')
+    //   .on('postgres_changes', {
+    //     event: '*',
+    //     schema: 'public',
+    //     table: 'work_areas',
+    //     filter: `event_id=eq.${currentEvent.id}`
+    //   }, () => {
+    //     console.log('📡 SignOutTable: Received work area change, refreshing...')
+    //     forceRefresh()
+    //   })
+    //   .on('postgres_changes', {
+    //     event: '*',
+    //     schema: 'public',
+    //     table: 'work_assignments',
+    //   }, () => {
+    //     console.log('📡 SignOutTable: Received work assignment change, refreshing...')
+    //     forceRefresh()
+    //   })
+    //   .subscribe()
+
+    // return () => {
+    //   workAreaSubscription.unsubscribe()
+    // }
+  }, [currentEvent?.id])
 
   // Automatically sort records - signed-in first, then signed-out
   const filteredRecords = signOutRecords
@@ -391,74 +535,61 @@ export function SignOutTable({
 
   // Render Event view
   if (statusFilter === "event") {
-    // Calculate attendance metrics
-    const employeesNeeded = selectedEvent?.employeesNeeded || 15;
-    const employeesPresent = stats.signedIn;
+    // Calculate attendance metrics using current event and employee event statuses
+    const employeesNeeded = currentEvent?.employeesNeeded || 15;
+    // Count employees with "available" status from the Mitteilungen page
+    const employeesPresent = employeeEventStatuses.filter(status => status.status === 'available').length;
     const attendancePercentage = Math.round((employeesPresent / employeesNeeded) * 100);
 
-    // Transform real work area data for Event view display
+    // Get work areas with real assignments from sync hook
     const getWorkAreasForEventView = () => {
-      if (dbWorkAreas.length === 0) {
-        // Fallback to mock data if no real data available
-        return [
-          {
-            id: "WA001",
-            name: "Main Entrance",
-            location: "Emslandarena",
-            needed: 4,
-            present: 3,
-            employees: ["Anna Schmidt", "Max Müller", "Lisa Weber", "Tom Fischer"]
-          },
-          {
-            id: "WA002",
-            name: "Food Court",
-            location: "Emslandhalle",
-            needed: 6,
-            present: 4,
-            employees: ["Sarah Klein", "Julia Hoffmann", "Michael Berg", "Anna Becker", "David Wolf", "Maria Hansen"]
-          },
-          {
-            id: "WA003",
-            name: "Mobile Counter",
-            location: "Outdoor Area", 
-            needed: 3,
-            present: 2,
-            employees: ["Lisa Schmidt", "Paul Weber", "Nina Fischer"]
-          }
-        ]
+      console.log('📋 SignOutTable: Getting work areas for event view')
+      console.log('📋 SignOutTable: syncedWorkAreas:', syncedWorkAreas)
+      console.log('📋 SignOutTable: syncLoading:', syncLoading)
+      console.log('📋 SignOutTable: currentEvent:', currentEvent)
+      
+      // Use synced work areas if available
+      if (syncedWorkAreas.length > 0) {
+        console.log('📋 SignOutTable: Using synced work areas')
+        const workAreasData = syncedWorkAreas
+          .filter(area => area.is_active)
+          .map(area => {
+            console.log(`📋 Work area ${area.name}: ${area.assigned_employees.length} assigned employees`)
+            console.log(`📋 Assigned employees:`, area.assigned_employees.map(emp => emp.name))
+            
+            return {
+              id: area.id,
+              name: area.name,
+              location: area.location,
+              needed: Object.values(area.role_requirements).reduce((sum: number, count) => sum + (count as number), 0),
+              present: area.assigned_employees.length,
+              employees: area.assigned_employees.length > 0 
+                ? area.assigned_employees.map(emp => emp.name)
+                : [] // Return empty array instead of "Keine Zuweisungen" to distinguish from unconfigured
+            }
+          })
+        console.log('📋 SignOutTable: Final work areas data:', workAreasData)
+        return workAreasData
       }
 
-      // Transform real work areas
-      return dbWorkAreas
-        .filter(area => area.is_active)
-        .map(area => {
-          // Calculate employees needed based on role requirements
-          const needed = Object.values(area.role_requirements).reduce((sum: number, count) => sum + (count as number), 0)
-          
-          // Get employee names - use available employees or database employees
-          const employeesToUse = availableEmployees.length > 0 ? availableEmployees : dbEmployees
-          let assignedEmployeeNames = employeesToUse
-            .filter(emp => emp.workAreaId === area.id) // Assuming employee has workAreaId
-            .map(emp => emp.name)
+      // Use the sync hook's method for attendance data
+      console.log('📋 SignOutTable: No synced work areas, trying attendance data')
+      const attendanceData = getWorkAreaAssignmentsForAttendance()
+      console.log('📋 SignOutTable: Attendance data:', attendanceData)
+      if (attendanceData.length > 0) {
+        return attendanceData
+      }
 
-          // If no specific assignments, use sample employees
-          if (assignedEmployeeNames.length === 0) {
-            // Take a sample based on the area's capacity
-            const sampleSize = Math.min(needed, employeesToUse.length)
-            assignedEmployeeNames = employeesToUse
-              .slice(0, sampleSize)
-              .map(emp => emp.name)
-          }
+      // If we're still loading, return empty array but don't show "not configured" message
+      if (syncLoading) {
+        console.log('📋 SignOutTable: Still loading, returning empty array')
+        return []
+      }
 
-          return {
-            id: area.id,
-            name: area.name,
-            location: area.location,
-            needed: needed,
-            present: assignedEmployeeNames.length,
-            employees: assignedEmployeeNames.length > 0 ? assignedEmployeeNames : ["Keine Zuweisungen"]
-          }
-        })
+      // Return empty array if no real data is configured
+      // This will trigger the "Es wurde noch nichts konfiguriert" message
+      console.log('📋 SignOutTable: No work area data available')
+      return []
     }
 
     const workAreas = getWorkAreasForEventView();
@@ -470,66 +601,108 @@ export function SignOutTable({
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
-                {selectedEvent?.name || "Event Übersicht"}
+                {currentEvent?.name || "Event Übersicht"}
               </h1>
               <p className="mt-1 text-gray-600">
-                {selectedEvent?.date || "Event-Informationen und Status"}
+                {currentEvent?.date || "Event-Informationen und Status"}
               </p>
+              {syncError && (
+                <p className="mt-1 text-sm text-red-600">
+                  Sync-Fehler: {syncError}
+                </p>
+              )}
             </div>
-            <Button
-              onClick={() => handleDownloadWorkAreaSheets()}
-              className="gap-2 rounded-xl bg-gradient-to-r from-green-500 to-green-600 font-medium shadow-sm transition-all duration-200 hover:from-green-600 hover:to-green-700"
-            >
-              <Download className="h-4 w-4" />
-              Arbeitsbereich aufteilung
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => {
+                  console.log('🔄 Manual refresh triggered from header')
+                  forceRefresh()
+                  if (currentEvent?.id) {
+                    fetchEmployeeEventStatuses(currentEvent.id)
+                  }
+                }}
+                disabled={syncLoading || statusLoading}
+                variant="outline"
+                className="gap-2 rounded-xl border-gray-200"
+              >
+                <RefreshCw className={`h-4 w-4 ${(syncLoading || statusLoading) ? 'animate-spin' : ''}`} />
+                {(syncLoading || statusLoading) ? 'Synchronisiere...' : 'Aktualisieren'}
+              </Button>
+              <Button
+                onClick={() => handleDownloadWorkAreaSheets()}
+                className="gap-2 rounded-xl bg-gradient-to-r from-green-500 to-green-600 font-medium shadow-sm transition-all duration-200 hover:from-green-600 hover:to-green-700"
+              >
+                <Download className="h-4 w-4" />
+                Arbeitsbereich aufteilung
+              </Button>
+            </div>
           </div>
         </div>
 
         {/* Event Details with Attendance */}
         <div className="bg-white rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.08)] p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Event Details</h2>
-          {selectedEvent ? (
+          {currentEvent ? (
             <div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <Calendar className="h-4 w-4 text-gray-400" />
-                    <span className="text-sm text-gray-600">Datum: {selectedEvent.date}</span>
+                    <span className="text-sm text-gray-600">Datum: {currentEvent.date}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <MapPin className="h-4 w-4 text-gray-400" />
-                    <span className="text-sm text-gray-600">Ort: {selectedEvent.location || 'Nicht angegeben'}</span>
+                    <span className="text-sm text-gray-600">Ort: {currentEvent.location || 'Nicht angegeben'}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Users className="h-4 w-4 text-gray-400" />
-                    <span className="text-sm text-gray-600">Benötigt: {selectedEvent.employeesNeeded || 'Nicht angegeben'} Mitarbeiter</span>
+                    <span className="text-sm text-gray-600">Benötigt: {currentEvent.employeesNeeded || 'Nicht angegeben'} Mitarbeiter</span>
                   </div>
                 </div>
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4 text-gray-400" />
-                    <span className="text-sm text-gray-600">Zeit: {selectedEvent.time || 'Nicht angegeben'}</span>
+                    <span className="text-sm text-gray-600">Zeit: {currentEvent.time || 'Nicht angegeben'}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Euro className="h-4 w-4 text-gray-400" />
-                    <span className="text-sm text-gray-600">Stundenlohn: €{selectedEvent.hourlyRate || '15.50'}</span>
+                    <span className="text-sm text-gray-600">Stundenlohn: €{currentEvent.hourlyRate || '15.50'}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Subtle Attendance Progress */}
+              {/* Employee Availability Progress */}
               <div className="border-t border-gray-100 pt-4">
                 <div className="flex items-center justify-between text-sm mb-2">
-                  <span className="text-gray-600">Mitarbeiter Anwesenheit</span>
-                  <span className="text-gray-900 font-medium">{employeesPresent} / {employeesNeeded}</span>
+                  <span className="text-gray-600">Verfügbare Mitarbeiter</span>
+                  {statusLoading ? (
+                    <span className="text-gray-500 font-medium flex items-center gap-2">
+                      <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                      Synchronisiere...
+                    </span>
+                  ) : (
+                    <span className="text-gray-900 font-medium">{employeesPresent} / {employeesNeeded}</span>
+                  )}
                 </div>
                 <div className="w-full bg-gray-100 rounded-full h-1.5">
                   <div
-                    className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
-                    style={{ width: `${Math.min(attendancePercentage, 100)}%` }}
+                    className={`h-1.5 rounded-full transition-all duration-500 ${
+                      statusLoading ? 'bg-gray-300 animate-pulse' : 
+                      employeesPresent >= employeesNeeded ? 'bg-green-600' : 'bg-blue-600'
+                    }`}
+                    style={{ width: statusLoading ? '50%' : `${Math.min(attendancePercentage, 100)}%` }}
                   />
                 </div>
+                {!statusLoading && (
+                  <div className="flex items-center justify-between text-xs text-gray-500 mt-1">
+                    <span>Live-Synchronisation mit Mitteilungen</span>
+                    <span className={`font-medium ${
+                      employeesPresent >= employeesNeeded ? 'text-green-600' : 'text-blue-600'
+                    }`}>
+                      {attendancePercentage}% erreicht
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -539,37 +712,115 @@ export function SignOutTable({
 
         {/* Work Area Distribution - Separate Container */}
         <div className="bg-white rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.08)] p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-6">Arbeitsbereich-Verteilung</h2>
-          
-          <div className="space-y-4">
-            {workAreas.map((area) => {
-              return (
-                <div key={area.id} className="p-4 bg-gray-50/50 rounded-xl border border-gray-100">
-                  {/* Area Header */}
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4 text-gray-400" />
-                      <span className="font-medium text-gray-900">{area.name}</span>
-                    </div>
-                    <span className="text-sm text-gray-500">• {area.location}</span>
-                  </div>
-
-                  {/* Employee Grid - No Status Colors */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                    {area.employees.map((employee, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-white border border-gray-200 text-gray-700"
-                      >
-                        <div className="w-2 h-2 rounded-full bg-gray-300" />
-                        <span className="font-medium truncate">{employee}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-semibold text-gray-900">Arbeitsbereich-Verteilung</h2>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => {
+                  console.log('🔄 SignOutTable: Manual work area refresh triggered')
+                  forceRefresh()
+                }}
+                variant="outline"
+                size="sm"
+                className="gap-2 rounded-xl"
+                disabled={syncLoading}
+              >
+                <RefreshCw className={`h-4 w-4 ${syncLoading ? 'animate-spin' : ''}`} />
+                Aktualisieren
+              </Button>
+              {workAreas.length > 0 && workAreas.some(area => area.employees.length > 0) && (
+                <Button
+                  onClick={() => {
+                    setWorkAreaView?.("arbeitsbereiche")
+                    setShowWorkAreaAssignment?.(true)
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 rounded-xl"
+                >
+                  <Settings className="h-4 w-4" />
+                  Bearbeiten
+                </Button>
+              )}
+            </div>
           </div>
+          
+          {/* Loading state */}
+          {syncLoading ? (
+            <div className="text-center py-12">
+              <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Synchronisiere Arbeitsbereiche...</h3>
+              <p className="text-gray-600">
+                Lade aktuelle Arbeitsbereich-Zuweisungen für dieses Event.
+              </p>
+            </div>
+          ) : 
+          /* Check if work areas are properly configured */
+          (workAreas.length === 0 || (workAreas.length > 0 && workAreas.every(area => area.employees.length === 0))) ? (
+            /* Empty State */
+            <div className="text-center py-12">
+              <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                <MapPin className="h-8 w-8 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Es wurde noch nichts konfiguriert</h3>
+              <p className="text-gray-600 mb-6 max-w-md mx-auto">
+                Richten Sie Arbeitsbereiche für dieses Event ein, um Mitarbeiter effizient zu verteilen.
+              </p>
+              <Button
+                onClick={() => {
+                  setWorkAreaView?.("arbeitsbereiche")
+                  setShowWorkAreaAssignment?.(true)
+                }}
+                className="gap-2 rounded-xl bg-blue-600 hover:bg-blue-700"
+              >
+                <Settings className="h-4 w-4" />
+                Jetzt konfigurieren
+              </Button>
+            </div>
+          ) : (
+            /* Configured Work Areas */
+            <div className="space-y-4">
+              {workAreas.map((area) => {
+                return (
+                  <div key={area.id} className="p-4 bg-gray-50/50 rounded-xl border border-gray-100">
+                    {/* Area Header */}
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-gray-400" />
+                        <span className="font-medium text-gray-900">{area.name}</span>
+                      </div>
+                      <span className="text-sm text-gray-500">• {area.location}</span>
+                      <div className="ml-auto flex items-center gap-2 text-sm text-gray-600">
+                        <Users className="h-4 w-4" />
+                        <span>{area.present || area.employees.length} / {area.needed || area.employees.length}</span>
+                      </div>
+                    </div>
+
+                    {/* Employee Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                      {area.employees.length > 0 ? (
+                        area.employees.map((employee, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-white border border-gray-200 text-gray-700"
+                          >
+                            <div className="w-2 h-2 rounded-full bg-green-400" />
+                            <span className="font-medium truncate">{employee}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="col-span-full flex items-center justify-center py-4 text-gray-500 text-sm">
+                          <span>Keine Mitarbeiter zugewiesen</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     )
@@ -583,19 +834,40 @@ export function SignOutTable({
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              {selectedEvent?.name || "Anwesenheitsliste"}
+              {currentEvent?.name || "Anwesenheitsliste"}
             </h1>
             <p className="mt-1 text-gray-600">
-              {selectedEvent?.date || "Mitarbeiterabmeldungen und -rückkehr verfolgen"}
+              {currentEvent?.date || "Mitarbeiterabmeldungen und -rückkehr verfolgen"}
             </p>
+            {syncError && (
+              <p className="mt-1 text-sm text-red-600">
+                Sync-Fehler: {syncError}
+              </p>
+            )}
           </div>
-          <Button
-            onClick={() => handleDownloadWorkAreaSheets()}
-            className="gap-2 rounded-xl bg-gradient-to-r from-green-500 to-green-600 font-medium shadow-sm transition-all duration-200 hover:from-green-600 hover:to-green-700"
-          >
-            <Download className="h-4 w-4" />
-            Arbeitsbereich aufteilung
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => {
+                forceRefresh()
+                if (currentEvent?.id) {
+                  fetchEmployeeEventStatuses(currentEvent.id)
+                }
+              }}
+              disabled={syncLoading || statusLoading}
+              variant="outline"
+              className="gap-2 rounded-xl border-gray-200"
+            >
+              <RefreshCw className={`h-4 w-4 ${(syncLoading || statusLoading) ? 'animate-spin' : ''}`} />
+              {(syncLoading || statusLoading) ? 'Synchronisiere...' : 'Aktualisieren'}
+            </Button>
+            <Button
+              onClick={() => handleDownloadWorkAreaSheets()}
+              className="gap-2 rounded-xl bg-gradient-to-r from-green-500 to-green-600 font-medium shadow-sm transition-all duration-200 hover:from-green-600 hover:to-green-700"
+            >
+              <Download className="h-4 w-4" />
+              Arbeitsbereich aufteilung
+            </Button>
+          </div>
         </div>
       </div>
 

@@ -1,8 +1,9 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, ReactNode, useRef } from "react"
 import { useEmployees } from "./use-employees"
 import { useEvents } from "./use-events"
+import { useStableEventComparison } from "./use-stable-event-comparison"
 
 interface Event {
   id: string
@@ -30,6 +31,7 @@ interface EventContextType {
 }
 
 const EVENT_STORAGE_KEY = 'ems-selected-event'
+const EMPLOYEE_STATUS_CACHE_KEY = 'ems-employee-status-cache'
 
 const EventContext = createContext<EventContextType | undefined>(undefined)
 
@@ -38,9 +40,11 @@ export function EventProvider({ children }: { children: ReactNode }) {
   const [eventEmployees, setEventEmployees] = useState<any[]>([])
   const [eventConfig, setEventConfig] = useState<any>({})
   const [isLoading, setIsLoading] = useState(false)
+  const isMountedRef = useRef(true)
 
   const { employees: dbEmployees, loading: employeesLoading } = useEmployees()
   const { events: dbEvents, loading: eventsLoading } = useEvents()
+  const { hasEventChanged, getStableEventId, resetComparison } = useStableEventComparison()
 
   // Transform database events to match UI format
   const events = dbEvents?.map(evt => ({
@@ -93,6 +97,14 @@ export function EventProvider({ children }: { children: ReactNode }) {
       window.dispatchEvent(new CustomEvent('selectedEventChanged', { detail: event }))
     }
   }
+
+  // Component lifecycle management
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   // Load persisted event on mount
   useEffect(() => {
@@ -170,19 +182,19 @@ export function EventProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (selectedEvent && events.length > 0) {
       const updatedEvent = events.find(evt => evt.id === selectedEvent.id)
-      if (updatedEvent && JSON.stringify(updatedEvent) !== JSON.stringify(selectedEvent)) {
+      if (updatedEvent && hasEventChanged(updatedEvent)) {
         console.log('🔄 Event Context: Syncing event with database changes')
-        setSelectedEvent(updatedEvent)
+        setSelectedEventState(updatedEvent) // Use state setter directly to avoid recursion
       }
     }
-  }, [events, selectedEvent])
+  }, [events.length, selectedEvent?.id, hasEventChanged]) // Only depend on events length and selected event ID
 
   // Load event-specific data when selected event changes
   useEffect(() => {
-    if (selectedEvent && !employeesLoading && !eventsLoading) {
+    if (selectedEvent && !employeesLoading && !eventsLoading && !isLoading) {
       loadEventData(selectedEvent)
     }
-  }, [selectedEvent, employeesLoading, eventsLoading])
+  }, [selectedEvent?.id, employeesLoading, eventsLoading]) // Only depend on event ID, not the whole object
 
   const loadEventData = async (event: Event) => {
     if (isLoading) return // Prevent concurrent loads
@@ -191,17 +203,127 @@ export function EventProvider({ children }: { children: ReactNode }) {
     try {
       console.log('🔄 Event Context: Loading data for event:', event.name)
       
-      // Load event-specific employee data
-      const eventEmployeeData = (dbEmployees || []).map(emp => ({
-        id: emp.id,
-        name: emp.name,
-        userId: emp.user_id,
-        lastSelection: emp.last_worked_date ? new Date(emp.last_worked_date).toLocaleString() : "Nie",
-        status: emp.is_always_needed ? "always-needed" : "available",
-        notes: `${emp.role} - ${emp.employment_type === 'fixed' ? 'Festangestellt' : 'Teilzeit'}`,
-        // Add event-specific status here when available
-        eventStatus: "not_asked" // This would come from employee_event_status table
-      }))
+      // Load event-specific employee data with actual statuses from database
+      let eventEmployeeData = []
+      
+      try {
+        // Fetch employee statuses from the database
+        console.log(`🔄 Event Context: Fetching from /api/employees/status?eventId=${event.id}`)
+        const response = await fetch(`/api/employees/status?eventId=${event.id}`)
+        console.log(`🔄 Event Context: API response status: ${response.status}`)
+        
+        if (response.ok) {
+          const result = await response.json()
+          const employeesWithStatus = result.data || []
+          console.log(`🔄 Event Context: Received ${employeesWithStatus.length} employees from API`)
+          
+          if (employeesWithStatus.length > 0) {
+            // Use employees with their actual statuses
+            eventEmployeeData = employeesWithStatus.map((emp: any) => {
+              const eventStatus = emp.employee_event_status?.[0]?.status
+              
+              // Map database status to UI status
+              let uiStatus = "not-selected" // default
+              if (eventStatus) {
+                switch (eventStatus) {
+                  case 'available':
+                    uiStatus = "available"
+                    break
+                  case 'selected':
+                    uiStatus = "selected"
+                    break
+                  case 'unavailable':
+                    uiStatus = "unavailable"
+                    break
+                  case 'always_needed':
+                    uiStatus = "always-needed"
+                    break
+                  case 'not_asked':
+                  default:
+                    uiStatus = "not-selected"
+                    break
+                }
+              } else if (emp.is_always_needed) {
+                uiStatus = "always-needed"
+              }
+              
+              return {
+                id: emp.id,
+                name: emp.name,
+                userId: emp.user_id,
+                lastSelection: emp.last_worked_date ? new Date(emp.last_worked_date).toLocaleString() : "Nie",
+                status: uiStatus,
+                notes: `${emp.role} - ${emp.employment_type === 'fixed' ? 'Festangestellt' : 'Teilzeit'}`,
+                eventStatus: eventStatus || "not_asked"
+              }
+            })
+            console.log(`✅ Event Context: Loaded ${eventEmployeeData.length} employees with actual statuses`)
+            
+            // Cache the employee status data for persistence
+            try {
+              const cacheData = {
+                eventId: event.id,
+                timestamp: Date.now(),
+                employees: eventEmployeeData
+              }
+              localStorage.setItem(EMPLOYEE_STATUS_CACHE_KEY, JSON.stringify(cacheData))
+              console.log('💾 Event Context: Cached employee status data')
+            } catch (error) {
+              console.warn('Failed to cache employee status data:', error)
+            }
+            
+            // Log status distribution for debugging
+            const statusCounts = eventEmployeeData.reduce((acc: any, emp: any) => {
+              acc[emp.status] = (acc[emp.status] || 0) + 1
+              return acc
+            }, {})
+            console.log('📊 Event Context Status distribution:', statusCounts);
+          } else {
+            throw new Error('No employees with status found')
+          }
+        } else {
+          const errorText = await response.text()
+          console.error(`🔄 Event Context: API error ${response.status}:`, errorText)
+          throw new Error(`Failed to fetch employee statuses: ${response.status}`)
+        }
+      } catch (statusError) {
+        console.warn('Event Context: Could not load employee statuses, preserving existing data if available:', statusError)
+        
+        // Try to preserve existing employee data or use cached data to prevent status reset
+        if (eventEmployees.length > 0) {
+          console.log('🔄 Event Context: Preserving existing employee data to prevent status reset')
+          eventEmployeeData = eventEmployees
+        } else {
+          // Try to load from cache
+          try {
+            const cachedData = localStorage.getItem(EMPLOYEE_STATUS_CACHE_KEY)
+            if (cachedData) {
+              const parsed = JSON.parse(cachedData)
+              if (parsed.eventId === event.id && (Date.now() - parsed.timestamp) < 24 * 60 * 60 * 1000) { // 24 hour cache
+                console.log('💾 Event Context: Using cached employee status data')
+                eventEmployeeData = parsed.employees
+              } else {
+                console.log('🔄 Event Context: Cache expired or wrong event, using defaults')
+                throw new Error('Cache expired')
+              }
+            } else {
+              throw new Error('No cache available')
+            }
+          } catch (cacheError) {
+            console.log('🔄 Event Context: No valid cache, using defaults')
+            // Only use defaults if we have no existing data and no cache
+            eventEmployeeData = (dbEmployees || []).map(emp => ({
+              id: emp.id,
+              name: emp.name,
+              userId: emp.user_id,
+              lastSelection: emp.last_worked_date ? new Date(emp.last_worked_date).toLocaleString() : "Nie",
+              status: emp.is_always_needed ? "always-needed" : "not-selected",
+              notes: `${emp.role} - ${emp.employment_type === 'fixed' ? 'Festangestellt' : 'Teilzeit'}`,
+              eventStatus: "not_asked"
+            }))
+          }
+        }
+      }
 
       setEventEmployees(eventEmployeeData)
 
@@ -224,9 +346,15 @@ export function EventProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const refreshEventData = () => {
+  const refreshEventData = async (retryCount = 0) => {
     if (selectedEvent) {
-      loadEventData(selectedEvent)
+      console.log(`🔄 Event Context: Refreshing event data (attempt ${retryCount + 1})`)
+      await loadEventData(selectedEvent)
+      
+      // If this is a retry after a status update, add a small delay
+      if (retryCount > 0) {
+        await new Promise(resolve => setTimeout(resolve, 200))
+      }
     }
   }
 

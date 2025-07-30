@@ -189,6 +189,10 @@ export function useWorkAssignments() {
       setError(null)
       
       console.log('Starting auto-assignment of employees to work areas')
+      console.log('Available employees for assignment:', availableEmployees.map(emp => ({ id: emp.id, name: emp.name })))
+      
+      // Extract employee IDs to ensure only sidebar employees are used
+      const employeeIds = availableEmployees.map(emp => emp.id)
       
       const response = await fetch('/api/work-assignments', {
         method: 'PUT',
@@ -196,7 +200,8 @@ export function useWorkAssignments() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          event_id: eventId
+          event_id: eventId,
+          employee_ids: employeeIds // Pass specific employee IDs
         })
       })
       

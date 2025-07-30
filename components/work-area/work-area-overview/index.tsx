@@ -6,6 +6,7 @@ import { useWorkAreas } from "@/hooks/use-work-areas"
 import { useWorkAssignments } from "@/hooks/use-work-assignments"
 import { useEventContext } from "@/hooks/use-event-context"
 import { useEmployees } from "@/hooks/use-employees"
+import { supabase } from "@/lib/supabase"
 import { EmployeeList } from "../employee-list"
 import type { WorkArea, Employee } from "@/hooks/use-work-area-assignment"
 
@@ -70,7 +71,99 @@ export function WorkAreaOverview({
     }
   }, [selectedEvent?.id, fetchWorkAreasByEvent, fetchAssignmentsByEvent])
 
-  // Transform database employees to UI format
+  // State for employee event statuses
+  const [employeeEventStatuses, setEmployeeEventStatuses] = useState<any[]>([])
+  const [statusLoading, setStatusLoading] = useState(false)
+
+  // Fetch employee event statuses for the current event
+  const fetchEmployeeEventStatuses = async (eventId: string) => {
+    if (!eventId) return
+    
+    setStatusLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('employee_event_status')
+        .select(`
+          *,
+          employees (
+            id,
+            name,
+            role,
+            skills
+          )
+        `)
+        .eq('event_id', eventId)
+        .eq('status', 'available') // Only get employees with "available" status
+
+      if (error) throw error
+      
+      // Transform to UI format
+      const availableEmployeesFromDB = data?.map(item => ({
+        id: item.employees.id,
+        name: item.employees.name,
+        role: item.employees.role as "allrounder" | "versorger" | "verkauf" | "manager" | "essen",
+        skills: item.employees.skills || [],
+        availability: "available" as const
+      })) || []
+      
+      setEmployeeEventStatuses(availableEmployeesFromDB)
+      console.log(`📋 WorkAreaOverview: Loaded ${availableEmployeesFromDB.length} available employees for event ${eventId}`)
+    } catch (error) {
+      console.error('Error fetching available employees for work areas:', error)
+      setEmployeeEventStatuses([])
+    } finally {
+      setStatusLoading(false)
+    }
+  }
+
+  // Fetch employee statuses when event changes
+  useEffect(() => {
+    if (selectedEvent?.id) {
+      fetchEmployeeEventStatuses(selectedEvent.id)
+    }
+  }, [selectedEvent?.id])
+
+  // Set up real-time subscription for employee status changes
+  useEffect(() => {
+    if (!selectedEvent?.id) return
+
+    const subscription = supabase
+      .channel('work-area-employee-status-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'employee_event_status',
+        filter: `event_id=eq.${selectedEvent.id}`
+      }, () => {
+        console.log('📡 WorkAreaOverview: Received employee status change, refreshing available employees...')
+        fetchEmployeeEventStatuses(selectedEvent.id)
+      })
+      .subscribe()
+
+    // Listen for custom employee status change events
+    const handleEmployeeStatusChange = (event: CustomEvent) => {
+      const { eventId } = event.detail
+      if (eventId === selectedEvent.id) {
+        console.log('📡 WorkAreaOverview: Received custom employee status change event, refreshing...')
+        fetchEmployeeEventStatuses(selectedEvent.id)
+      }
+    }
+
+    window.addEventListener('employeeStatusChanged', handleEmployeeStatusChange as EventListener)
+
+    return () => {
+      subscription.unsubscribe()
+      window.removeEventListener('employeeStatusChanged', handleEmployeeStatusChange as EventListener)
+    }
+  }, [selectedEvent?.id])
+
+  // Get employees that are available for this event (from database status)
+  const selectedEmployeesForEvent = employeeEventStatuses.filter(emp => {
+    // Only include real employees (not example employees) for work area assignments
+    return !emp.id.startsWith('emp-') // Filter out example employees
+  })
+
+  // Transform database employees to UI format (for assignments)
   const transformedEmployees = dbEmployees.map(emp => ({
     id: emp.id,
     name: emp.name,
@@ -78,12 +171,6 @@ export function WorkAreaOverview({
     skills: emp.skills || [],
     availability: "available" as const
   }))
-
-  // Get employees that are selected for this event
-  const selectedEmployeesForEvent = transformedEmployees.filter(emp => {
-    // Only include real employees (not example employees) for work area assignments
-    return !emp.id.startsWith('emp-') // Filter out example employees
-  })
 
   // Transform database work areas to UI format and include assignments
   const dbWorkAreasTransformed = dbWorkAreas
@@ -118,11 +205,9 @@ export function WorkAreaOverview({
   // Use database work areas if available, otherwise fall back to props
   const workAreas = dbWorkAreasTransformed.length > 0 ? dbWorkAreasTransformed : propWorkAreas
 
-  // Use real employees if available, otherwise fall back to props
-  // For display purposes, show all available employees (including example ones)
-  // But for assignment purposes, only use real employees
-  const realAvailableEmployees = selectedEmployeesForEvent.length > 0 ? selectedEmployeesForEvent : availableEmployees
-  const displayEmployees = availableEmployees.length > 0 ? availableEmployees : selectedEmployeesForEvent
+  // Use employees with "available" status from database
+  // IMPORTANT: Only show employees who are currently marked as "available" in Mitteilungen
+  const displayEmployees = selectedEmployeesForEvent // These are already filtered to "available" status
 
   // Check if all employees are distributed
   const totalRequired = workAreas.reduce((total, area) => total + area.maxCapacity, 0)
@@ -387,7 +472,7 @@ export function WorkAreaOverview({
           onAutoAssign={async () => {
             if (selectedEvent?.id) {
               try {
-                await autoAssignEmployees(selectedEvent.id, realAvailableEmployees, workAreas)
+                await autoAssignEmployees(selectedEvent.id, displayEmployees, workAreas)
                 console.log('Auto-assignment completed')
               } catch (error) {
                 console.error('Auto-assignment failed:', error)
@@ -443,13 +528,33 @@ export function WorkAreaOverview({
 
         {/* Available Employees - Hidden when employee list is shown */}
         <div className={`transition-opacity duration-300 ${showEmployeeList ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-          <EmployeeList
-            employees={getSelectedEmployeesForDisplay()}
-            selectedEmployees={selectedEmployees}
-            searchQuery={searchQuery}
-            onEmployeeSelect={onEmployeeSelect}
-            onClearSelection={onClearSelection}
-          />
+          {statusLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="flex items-center gap-2 text-gray-500">
+                <div className="w-4 h-4 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                Lade verfügbare Mitarbeiter...
+              </div>
+            </div>
+          ) : displayEmployees.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                <span className="text-gray-400 text-2xl">👥</span>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Keine verfügbaren Mitarbeiter</h3>
+              <p className="text-gray-600 max-w-md">
+                Für dieses Event sind aktuell keine Mitarbeiter als "verfügbar" markiert. 
+                Gehen Sie zu Mitteilungen, um Mitarbeiter-Status zu ändern.
+              </p>
+            </div>
+          ) : (
+            <EmployeeList
+              employees={displayEmployees}
+              selectedEmployees={selectedEmployees}
+              searchQuery={searchQuery}
+              onEmployeeSelect={onEmployeeSelect}
+              onClearSelection={onClearSelection}
+            />
+          )}
         </div>
       </div>
     </div>

@@ -310,16 +310,7 @@ export default function NeueVeranstaltungDialog({ isOpen, onClose, onSave }: Neu
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent className="max-w-2xl sm:rounded-lg p-0 bg-white shadow-xl fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          {/* Close Button */}
-          <DialogClose asChild>
-            <button
-              type="button"
-              className="absolute right-4 top-4 rounded-full p-2 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              aria-label="Close"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </DialogClose>
+
           <div className="p-6 sm:p-8">
             {/* Header */}
             <div className="mb-6">

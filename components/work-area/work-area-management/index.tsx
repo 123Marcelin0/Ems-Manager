@@ -1,9 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useWorkAreas } from "@/hooks/use-work-areas"
 import { useToast } from "@/hooks/use-toast"
 import { useEventContext } from "@/hooks/use-event-context"
+import { useDataLoadingCoordinator } from "@/hooks/use-data-loading-coordinator"
 
 // Components
 import { ManagementHeader } from "./management-header"
@@ -29,6 +30,8 @@ export function WorkAreaManagement({ onContinue, onWorkAreasSaved }: WorkAreaMan
   const { selectedEvent, setSelectedEvent, events: contextEvents } = useEventContext()
   const { workAreas: dbWorkAreas, loading, error, fetchWorkAreasByEvent, saveWorkAreasForEvent, createWorkArea } = useWorkAreas()
   const { initializeRoleRequirements, getLocationDefaults } = useDefaultAreas()
+  const { loadWorkAreasForEvent, isLoadingForEvent, cancelAllLoading } = useDataLoadingCoordinator()
+  const isMountedRef = useRef(true)
 
   // Transform context events to match the expected format
   const events = contextEvents.map(evt => ({
@@ -52,6 +55,17 @@ export function WorkAreaManagement({ onContinue, onWorkAreasSaved }: WorkAreaMan
   const [showConfigDialog, setShowConfigDialog] = useState(false)
   const [workAreas, setWorkAreas] = useState<WorkArea[]>([])
   const [isDataLoaded, setIsDataLoaded] = useState(false)
+
+  // Reset data loaded state when component mounts to ensure fresh data loading
+  useEffect(() => {
+    isMountedRef.current = true
+    setIsDataLoaded(false)
+    console.log('📋 WorkAreaManagement component mounted, resetting data loaded state')
+    
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   // Template state
   const [templates, setTemplates] = useState<Template[]>([
@@ -95,30 +109,38 @@ export function WorkAreaManagement({ onContinue, onWorkAreasSaved }: WorkAreaMan
 
   // Load work areas for selected event
   useEffect(() => {
-    const loadWorkAreas = async () => {
-      if (selectedEvent?.id) {
-        setIsDataLoaded(false)
-        setIsSaved(false)
-        
-        try {
-          await fetchWorkAreasByEvent(selectedEvent.id)
-        } catch (error) {
-          console.error('Failed to fetch work areas:', error)
-          toast({
-            title: "Fehler beim Laden",
-            description: "Arbeitsbereiche konnten nicht geladen werden.",
-            variant: "destructive"
-          })
-        }
-      }
+    if (selectedEvent?.id && isMountedRef.current) {
+      console.log(`📋 Loading work areas for event: ${selectedEvent.id}`)
+      
+      // Reset state for new event
+      setIsDataLoaded(false)
+      setIsSaved(false)
+      
+      // Use the data loading coordinator to prevent duplicate calls
+      loadWorkAreasForEvent(selectedEvent.id, fetchWorkAreasByEvent)
+        .catch(error => {
+          if (isMountedRef.current) {
+            console.error('Failed to fetch work areas:', error)
+            toast({
+              title: "Fehler beim Laden",
+              description: "Arbeitsbereiche konnten nicht geladen werden.",
+              variant: "destructive"
+            })
+          }
+        })
     }
     
-    loadWorkAreas()
-  }, [selectedEvent?.id, fetchWorkAreasByEvent, toast])
+    return () => {
+      // Cancel loading when event changes or component unmounts
+      if (selectedEvent?.id) {
+        cancelAllLoading()
+      }
+    }
+  }, [selectedEvent?.id])
 
   // Transform and set work areas when database data changes
   useEffect(() => {
-    if (selectedEvent?.id && !isDataLoaded) {
+    if (selectedEvent?.id && isMountedRef.current) {
       const transformedDbAreas = dbWorkAreas.map(area => ({
         id: area.id,
         name: area.name,
@@ -133,17 +155,21 @@ export function WorkAreaManagement({ onContinue, onWorkAreasSaved }: WorkAreaMan
         isFromDatabase: true
       }))
 
-      if (transformedDbAreas.length > 0) {
+      if (transformedDbAreas.length > 0 && isMountedRef.current) {
+        console.log(`📋 Loading ${transformedDbAreas.length} saved work areas for event ${selectedEvent.id}`)
         setWorkAreas(transformedDbAreas)
         setSelectedLocation(transformedDbAreas[0].location)
-      } else {
+        setIsDataLoaded(true)
+        setIsSaved(true) // Mark as saved since we loaded from database
+      } else if (isMountedRef.current && !isDataLoaded) {
+        // Only set defaults if we haven't loaded data yet
+        console.log(`📋 No saved work areas found, using defaults for location ${selectedLocation}`)
         const defaults = getLocationDefaults(selectedLocation)
         setWorkAreas(defaults)
+        setIsDataLoaded(true)
       }
-      
-      setIsDataLoaded(true)
     }
-  }, [dbWorkAreas, selectedEvent?.id, isDataLoaded, selectedLocation, initializeRoleRequirements, getLocationDefaults])
+  }, [dbWorkAreas, selectedEvent?.id]) // Depend on the actual data, not just length
 
   // Get filtered work areas for current location
   const getFilteredWorkAreas = () => {
@@ -483,7 +509,7 @@ export function WorkAreaManagement({ onContinue, onWorkAreasSaved }: WorkAreaMan
 
   const handleEventSelect = (event: Event) => {
     const contextEvent = contextEvents.find(e => e.id === event.id)
-    if (contextEvent) {
+    if (contextEvent && contextEvent.id !== selectedEvent?.id) {
       setSelectedEvent(contextEvent)
       setWorkAreas([])
       setIsDataLoaded(false)
@@ -497,6 +523,13 @@ export function WorkAreaManagement({ onContinue, onWorkAreasSaved }: WorkAreaMan
         ...selectedEvent,
         employees_to_ask: value
       })
+    }
+  }
+
+  const handleLocationChange = (newLocation: string) => {
+    if (newLocation !== selectedLocation && isMountedRef.current) {
+      console.log(`📋 Location changing from ${selectedLocation} to ${newLocation}`)
+      setSelectedLocation(newLocation)
     }
   }
 
@@ -535,7 +568,7 @@ export function WorkAreaManagement({ onContinue, onWorkAreasSaved }: WorkAreaMan
       {/* Location & Actions Card */}
       <LocationActionsSection
         selectedLocation={selectedLocation}
-        onLocationChange={setSelectedLocation}
+        onLocationChange={handleLocationChange}
         templates={templates}
         isSaved={isSaved}
         onAddWorkArea={handleAddWorkArea}

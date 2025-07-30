@@ -7,7 +7,9 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarProvider, SidebarInset, useSidebar } from "@/components/ui/sidebar"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { EventProvider, useEventContext } from "@/hooks/use-event-context"
-import { ProtectedPage } from "./protected-page"
+import { usePersistentEventState, usePersistentAppState } from "@/hooks/use-persistent-state"
+import { AuthProvider } from "@/components/auth/auth-provider"
+import { AuthWrapper } from "@/components/auth/auth-wrapper"
 
 import { QuickActions } from "@/components/quick-actions"
 import { EmployeeSection } from "@/components/employee-section"
@@ -40,25 +42,41 @@ function DashboardContent() {
   // Use real Supabase data
   const { employees: dbEmployees, loading: employeesLoading, getEmployeesForSelection, fetchEmployeesWithStatus, updateEmployeeStatus } = useEmployees();
   const { events: dbEvents, loading: eventsLoading, fetchEvents } = useEvents();
-  // Use global event context - no longer need to manage selectedEvent locally
-  const { selectedEvent } = useEventContext();
+  // Use global event context - this now includes employee data with statuses
+  const { selectedEvent, eventEmployees, isLoading: eventLoading, refreshEventData } = useEventContext();
   
-  // ALL useState hooks must be declared consistently - no conditional returns between hooks
+  // Use persistent state management
+  const {
+    workAreaView,
+    employeeOverviewView,
+    eventSchedulerView,
+    showWorkAreaAssignment,
+    mitteilungenSaved,
+    setWorkAreaView,
+    setEmployeeOverviewView,
+    setEventSchedulerView,
+    setShowWorkAreaAssignment,
+    setMitteilungenSaved,
+    isLoaded: persistentStateLoaded
+  } = usePersistentEventState(selectedEvent?.id || null);
+
+  const {
+    currentPage,
+    authorizationMode,
+    selectedForAuth,
+    authorizedUsers,
+    setCurrentPage,
+    setAuthorizationMode,
+    setSelectedForAuth,
+    setAuthorizedUsers
+  } = usePersistentAppState();
+  
+  // Non-persistent state
   const [activeFilter, setActiveFilter] = useState("all");
   const [requiredEmployees, setRequiredEmployees] = useState("0");
-  const [currentPage, setCurrentPage] = useState("work-planner");
-  const [authorizationMode, setAuthorizationMode] = useState(false);
-  const [selectedForAuth, setSelectedForAuth] = useState<string[]>([]);
-  const [authorizedUsers, setAuthorizedUsers] = useState<string[]>([]);
-  const [eventSchedulerView, setEventSchedulerView] = useState("planner");
-  const [showWorkAreaAssignment, setShowWorkAreaAssignment] = useState(false);
-  const [workAreaView, setWorkAreaView] = useState("event");
-  const [employeeOverviewView, setEmployeeOverviewView] = useState("mitarbeiter");
   const [localEvents, setLocalEvents] = useState<Event[]>([]);
   const [roleSearchQuery, setRoleSearchQuery] = useState("");
   const [selectedEmployeeForOverview, setSelectedEmployeeForOverview] = useState<string | null>(null);
-  const [localEmployees, setLocalEmployees] = useState<any[]>([]);
-  const [mitteilungenSaved, setMitteilungenSaved] = useState(false);
 
   // Sign-out table specific state
   const [signOutRecords] = useState([
@@ -82,11 +100,6 @@ function DashboardContent() {
       setActiveFilter("all");
     }
   }, [currentPage]);
-
-  // Reset Mitteilungen saved state when event changes
-  useEffect(() => {
-    setMitteilungenSaved(false);
-  }, [selectedEvent?.id]);
 
   // Handle Mitteilungen saved callback
   const handleMitteilungenSaved = () => {
@@ -152,22 +165,33 @@ function DashboardContent() {
     }
   ];
 
-  // Use employees or example data, but always show example employees if no real employees exist
-  // Prioritize localEmployees (which contains status updates) over base employees
+  // Use employees from event context (which includes status data) or fallback appropriately
   let finalEmployees;
-  if (localEmployees.length > 0) {
-    // If we have local employee state (with status updates), use it
-    finalEmployees = localEmployees;
-  } else if (dbEmployees.length === 0) {
-    // If no database employees exist, use example data
+  
+  // Priority 1: Use event context employees if available (includes persisted status data)
+  if (eventEmployees.length > 0) {
+    console.log('📋 App: Using event context employees with persisted status data')
+    finalEmployees = eventEmployees;
+  } 
+  // Priority 2: If event context is still loading but we have a selected event, wait for it
+  else if (selectedEvent && eventLoading) {
+    console.log('📋 App: Event context is loading, using empty array to prevent status reset')
+    finalEmployees = []; // Don't use fallback data while loading to prevent status reset
+  }
+  // Priority 3: If no database employees exist, use example data
+  else if (dbEmployees.length === 0) {
+    console.log('📋 App: No database employees, using example data')
     finalEmployees = exampleEmployees;
-  } else {
-    // Otherwise use the transformed database employees
+  } 
+  // Priority 4: Use transformed database employees as last resort (but this loses status data)
+  else {
+    console.log('⚠️ App: Using transformed database employees - status data may be lost')
     finalEmployees = employees;
   }
   
-  // Ensure we always have some employees to work with
-  if (finalEmployees.length === 0) {
+  // Only use example employees if we have no other option and no event is selected
+  if (finalEmployees.length === 0 && !selectedEvent) {
+    console.log('📋 App: No employees available and no event selected, using example data')
     finalEmployees = exampleEmployees;
   }
 
@@ -188,8 +212,8 @@ function DashboardContent() {
 
   // Enhanced initial event selection handling
   useEffect(() => {
-    // Don't set initial event if still loading data
-    if (employeesLoading || eventsLoading) return
+    // Don't set initial event if still loading data or persistent state
+    if (employeesLoading || eventsLoading || !persistentStateLoaded) return
     
     // If no events exist, that's okay - user needs to create one first
     if (events.length === 0) {
@@ -368,21 +392,17 @@ function DashboardContent() {
         console.error('API reset error, falling back to client-side reset:', apiError);
       }
       
-      // Update local state regardless of API success
-      // Initialize localEmployees if not already done
-      if (localEmployees.length === 0) {
-        setLocalEmployees((dbEmployees.length === 0 ? exampleEmployees : employees).map((employee: any) => 
-          employee.status !== "always-needed" 
-            ? { ...employee, status: "not-selected" }
-            : employee
-        ));
-      } else {
-        // Reset all employee statuses to "not-selected" except "always-needed"
-        setLocalEmployees((prev: any[]) => prev.map((employee: any) => 
-          employee.status !== "always-needed" 
-            ? { ...employee, status: "not-selected" }
-            : employee
-        ));
+      // Reset all employee statuses in database for this event
+      if (selectedEvent?.id) {
+        // Reset all employees to "not-selected" except "always-needed"
+        for (const employee of finalEmployees) {
+          if (employee.status !== "always-needed") {
+            await handleStatusChange(employee.id, "not-selected");
+          }
+        }
+        
+        // Refresh event data to reflect changes
+        refreshEventData();
       }
       
       console.log('Reset all employees for event:', selectedEvent.id);
@@ -452,119 +472,7 @@ function DashboardContent() {
     handleStatusChange(employeeId, newStatus as any);
   };
 
-  // Load employee statuses when event changes
-  useEffect(() => {
-    const loadEmployeeStatuses = async () => {
-      if (!selectedEvent?.id) {
-        console.log('Skipping employee status load: no selected event');
-        return;
-      }
-      
-      if (dbEmployees.length === 0) {
-        console.log('Skipping employee status load: no database employees, using example employees');
-        // If no database employees, ensure we have example employees loaded
-        if (localEmployees.length === 0) {
-          setLocalEmployees(exampleEmployees);
-        }
-        return;
-      }
-      
-      try {
-        console.log(`Loading employee statuses for event: ${selectedEvent.id}`);
-        
-        // Always try to fetch employees with status
-        if (fetchEmployeesWithStatus) {
-          const employeesWithStatus = await fetchEmployeesWithStatus(selectedEvent.id);
-          
-          if (employeesWithStatus && employeesWithStatus.length > 0) {
-            // Transform to match UI format and set local state
-            const transformedEmployees = employeesWithStatus.map(emp => {
-              // Get the status from the employee_event_status array
-              const eventStatus = emp.employee_event_status?.[0]?.status;
-              
-              // Map database status to UI status
-              let uiStatus = "not-selected"; // default
-              if (eventStatus) {
-                switch (eventStatus) {
-                  case 'available':
-                    uiStatus = "available";
-                    break;
-                  case 'selected':
-                    uiStatus = "selected";
-                    break;
-                  case 'unavailable':
-                    uiStatus = "unavailable";
-                    break;
-                  case 'always_needed':
-                    uiStatus = "always-needed";
-                    break;
-                  case 'not_asked':
-                  default:
-                    uiStatus = "not-selected";
-                    break;
-                }
-              } else if (emp.is_always_needed) {
-                // If no status but employee is always needed, set to always-needed
-                uiStatus = "always-needed";
-              }
-              
-              return {
-                id: emp.id,
-                name: emp.name,
-                userId: emp.user_id,
-                lastSelection: emp.last_worked_date ? new Date(emp.last_worked_date).toLocaleString() : "Nie",
-                status: uiStatus,
-                notes: `${emp.role} - ${emp.employment_type === 'fixed' ? 'Festangestellt' : 'Teilzeit'}`
-              };
-            });
-            
-            setLocalEmployees(transformedEmployees);
-            console.log(`✅ Loaded ${transformedEmployees.length} employees with statuses for event ${selectedEvent.id}`);
-            
-            // Log status distribution for debugging
-            const statusCounts = transformedEmployees.reduce((acc, emp) => {
-              acc[emp.status] = (acc[emp.status] || 0) + 1;
-              return acc;
-            }, {});
-            console.log('📊 Status distribution:', statusCounts);
-            return;
-          }
-        }
-        
-        // Fallback: create default employee list from database employees
-        console.log('Using fallback: creating default employee statuses');
-        const defaultEmployees = dbEmployees.map(emp => ({
-          id: emp.id,
-          name: emp.name,
-          userId: emp.user_id,
-          lastSelection: emp.last_worked_date ? new Date(emp.last_worked_date).toLocaleString() : "Nie",
-          status: emp.is_always_needed ? "always-needed" : "not-selected",
-          notes: `${emp.role} - ${emp.employment_type === 'fixed' ? 'Festangestellt' : 'Teilzeit'}`
-        }));
-        
-        setLocalEmployees(defaultEmployees);
-        console.log(`✅ Set ${defaultEmployees.length} employees with default statuses`);
-        
-      } catch (error) {
-        console.error('Error loading employee statuses:', error);
-        
-        // Final fallback: set default statuses
-        const defaultEmployees = dbEmployees.map(emp => ({
-          id: emp.id,
-          name: emp.name,
-          userId: emp.user_id,
-          lastSelection: emp.last_worked_date ? new Date(emp.last_worked_date).toLocaleString() : "Nie",
-          status: emp.is_always_needed ? "always-needed" : "not-selected",
-          notes: `${emp.role} - ${emp.employment_type === 'fixed' ? 'Festangestellt' : 'Teilzeit'}`
-        }));
-        
-        setLocalEmployees(defaultEmployees);
-        console.log(`⚠️ Used error fallback: set ${defaultEmployees.length} employees with default statuses`);
-      }
-    };
-    
-    loadEmployeeStatuses();
-  }, [selectedEvent?.id, dbEmployees.length, fetchEmployeesWithStatus]);
+  // Employee status loading is now handled by the event context
 
   // Calendar toggle functionality removed
 
@@ -590,104 +498,61 @@ function DashboardContent() {
 
 
   const handleStatusChange = async (employeeId: string, newStatus: EmployeeStatus) => {
-    console.log('🔄 handleStatusChange called:', { employeeId, newStatus, selectedEvent: selectedEvent?.id });
-    
-    // Initialize localEmployees if empty
-    if (localEmployees.length === 0) {
-      const baseEmployees = dbEmployees.length > 0 ? employees : exampleEmployees;
-      setLocalEmployees(baseEmployees);
-    }
-    
-    // Update employee status in local state immediately for UI responsiveness
-    setLocalEmployees((prev: any[]) => {
-      // If prev is empty, use base employees
-      const currentEmployees = prev.length > 0 ? prev : (dbEmployees.length > 0 ? employees : exampleEmployees);
-      
-      const updated = currentEmployees.map((employee: any) => 
-        employee.id === employeeId 
-          ? { 
-              ...employee, 
-              status: newStatus,
-              // Update last selection time for selected employees
-              lastSelection: newStatus === "selected" ? new Date().toLocaleDateString('de-DE') + ', ' + new Date().toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'}) : employee.lastSelection
-            }
-          : employee
-      );
-      
-      console.log('🔄 Updated local employee status:', employeeId, 'to', newStatus);
-      return updated;
-    });
+    console.log('🔄 Mitteilungen: handleStatusChange called:', { employeeId, newStatus, selectedEvent: selectedEvent?.id });
     
     // Update employee event status in database (only for real employees, not examples)
     if (selectedEvent?.id && !employeeId.startsWith('emp-')) {
       try {
-        console.log(`Updating status for employee ${employeeId} to ${newStatus} for event ${selectedEvent.id}`);
+        console.log(`Mitteilungen: Updating status for employee ${employeeId} to ${newStatus} for event ${selectedEvent.id}`);
         
+        // Use the standard employee status update
         if (updateEmployeeStatus) {
           await updateEmployeeStatus(employeeId, selectedEvent.id, newStatus);
-          console.log('✅ Successfully updated employee status in database');
+          console.log('✅ Mitteilungen: Successfully updated employee status in database');
           
-          // Force a refresh of employee statuses to ensure persistence
+          // Refresh event context data to get updated statuses (with retry mechanism)
           setTimeout(async () => {
-            if (fetchEmployeesWithStatus && selectedEvent?.id) {
-              try {
-                console.log('🔄 Refreshing employee statuses after update...');
-                const refreshedEmployees = await fetchEmployeesWithStatus(selectedEvent.id);
-                
-                if (refreshedEmployees && refreshedEmployees.length > 0) {
-                  const transformedEmployees = refreshedEmployees.map(emp => {
-                    const eventStatus = emp.employee_event_status?.[0]?.status;
-                    let uiStatus = "not-selected";
-                    if (eventStatus) {
-                      switch (eventStatus) {
-                        case 'available': uiStatus = "available"; break;
-                        case 'selected': uiStatus = "selected"; break;
-                        case 'unavailable': uiStatus = "unavailable"; break;
-                        case 'always_needed': uiStatus = "always-needed"; break;
-                        case 'not_asked':
-                        default: uiStatus = "not-selected"; break;
-                      }
-                    } else if (emp.is_always_needed) {
-                      uiStatus = "always-needed";
-                    }
-                    
-                    return {
-                      id: emp.id,
-                      name: emp.name,
-                      userId: emp.user_id,
-                      lastSelection: emp.last_worked_date ? new Date(emp.last_worked_date).toLocaleString() : "Nie",
-                      status: uiStatus,
-                      notes: `${emp.role} - ${emp.employment_type === 'fixed' ? 'Festangestellt' : 'Teilzeit'}`
-                    };
-                  });
-                  
-                  setLocalEmployees(transformedEmployees);
-                  console.log('✅ Employee statuses refreshed from database');
-                }
-              } catch (refreshError) {
-                console.error('Error refreshing employee statuses:', refreshError);
-              }
-            }
-          }, 500); // Small delay to ensure database write is complete
+            await refreshEventData(1); // Pass retry count
+          }, 200);
+          
+          // Also trigger work area sync if status changed to/from selected
+          if (newStatus === 'selected' || newStatus === 'available') {
+            // Dispatch event to notify work area components
+            window.dispatchEvent(new CustomEvent('employeeStatusChanged', { 
+              detail: { employeeId, newStatus, eventId: selectedEvent.id } 
+            }));
+          }
           
         } else {
-          console.warn('updateEmployeeStatus function not available, status updated locally only');
+          console.warn('Mitteilungen: updateEmployeeStatus function not available, status updated locally only');
         }
         
       } catch (error) {
-        console.error('❌ Error updating employee status:', error);
+        console.error('❌ Mitteilungen: Error updating employee status:', error);
         // Don't revert local state for database errors - keep the UI responsive
       }
     } else if (employeeId.startsWith('emp-')) {
-      console.log('📝 Example employee status updated locally only');
+      console.log('📝 Mitteilungen: Example employee status updated locally only');
     }
     
-    console.log('✅ Employee status update completed:', employeeId, newStatus);
+    console.log('✅ Mitteilungen: Employee status update completed:', employeeId, newStatus);
   }
 
   const handleNavigateToEmployeeOverview = (employeeId: string) => {
     setSelectedEmployeeForOverview(employeeId);
     setCurrentPage("employee-overview");
+  }
+
+  // Show loading screen while persistent state is loading
+  if (!persistentStateLoaded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading event settings...</p>
+        </div>
+      </div>
+    )
   }
 
   const renderContent = () => {
@@ -732,6 +597,29 @@ function DashboardContent() {
           onEmployeeStatusChange={handleStatusChangeString}
         />
       case "sign-out-table":
+        // Handle mitteilungen view within sign-out-table when work area assignment is active
+        if (showWorkAreaAssignment && workAreaView === "mitteilungen") {
+          return <Mitteilungen
+            employees={finalEmployees}
+            activeFilter={activeFilter}
+            setActiveFilter={setActiveFilter}
+            stats={stats}
+            requiredEmployees={requiredEmployees}
+            setRequiredEmployees={setRequiredEmployees}
+            onRandomSelection={handleRandomSelection}
+            onResetAll={handleResetAll}
+            onEmployeesNeededChange={handleEmployeesNeededChange}
+            onEmployeesToAskChange={handleEmployeesToAskChange}
+            onStatusChange={handleStatusChangeString}
+            authorizationMode={authorizationMode}
+            selectedForAuth={selectedForAuth}
+            setSelectedForAuth={setSelectedForAuth}
+            authorizedUsers={authorizedUsers}
+            onMitteilungenSaved={handleMitteilungenSaved}
+            onMitteilungenContinue={handleMitteilungenContinue}
+            mitteilungenSaved={mitteilungenSaved}
+          />
+        }
         return <SignOutTable 
           statusFilter={activeFilter}
           showWorkAreaAssignment={showWorkAreaAssignment}
@@ -813,9 +701,8 @@ function DashboardContent() {
               // Refresh events from database to show the newly created event
               refreshEvents()
               
-              // Navigate to work planner with event view
+              // Navigate to work planner (keep current workAreaView)
               setCurrentPage("work-planner");
-              setWorkAreaView("event");
             }}
           />
 
@@ -831,10 +718,14 @@ function DashboardContent() {
 
 export default function Dashboard() {
   return (
-    <ProtectedPage>
-      <EventProvider>
-        <DashboardContent />
-      </EventProvider>
-    </ProtectedPage>
+    <AuthProvider>
+      <AuthWrapper>
+        <SidebarProvider>
+          <EventProvider>
+            <DashboardContent />
+          </EventProvider>
+        </SidebarProvider>
+      </AuthWrapper>
+    </AuthProvider>
   )
 }

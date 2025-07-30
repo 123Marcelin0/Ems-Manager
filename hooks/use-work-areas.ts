@@ -412,6 +412,57 @@ export function useWorkAreas() {
     }
   }
 
+  // Clear all work areas for an event
+  const clearWorkAreasForEvent = async (eventId: string) => {
+    try {
+      setSaving(true)
+      setError(null)
+      
+      console.log(`🗑️ Clearing all work areas for event: ${eventId}`)
+      
+      const headers = getHeaders()
+      const response = await fetch('/api/work-areas/batch', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          event_id: eventId,
+          work_areas: [], // Empty array to clear all
+          replace_existing: true
+        }),
+      })
+      
+      const result = await response.json()
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to clear work areas')
+      }
+      
+      // Update local state - remove all areas for this event
+      setWorkAreas(prev => prev.filter(area => area.event_id !== eventId))
+      
+      console.log(`✅ Successfully cleared all work areas for event: ${eventId}`)
+      
+      toast({
+        title: "Arbeitsbereiche gelöscht",
+        description: "Alle Arbeitsbereiche für dieses Event wurden gelöscht.",
+      })
+      
+      return true
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to clear work areas'
+      console.error('❌ Error clearing work areas for event:', errorMessage)
+      setError(errorMessage)
+      toast({
+        title: "Fehler beim Löschen",
+        description: errorMessage,
+        variant: "destructive"
+      })
+      throw err
+    } finally {
+      setSaving(false)
+    }
+  }
+
   // Save multiple work areas for an event (batch operation)
   const saveWorkAreasForEvent = async (eventId: string, workAreasData: CreateWorkAreaData[]) => {
     try {
@@ -426,7 +477,8 @@ export function useWorkAreas() {
         headers,
         body: JSON.stringify({
           event_id: eventId,
-          work_areas: workAreasData
+          work_areas: workAreasData,
+          replace_existing: true // Explicitly overwrite existing configurations
         }),
       })
       
@@ -660,6 +712,7 @@ export function useWorkAreas() {
     
     // Batch operations
     saveWorkAreasForEvent,
+    clearWorkAreasForEvent,
     
     // Advanced operations
     duplicateWorkArea,

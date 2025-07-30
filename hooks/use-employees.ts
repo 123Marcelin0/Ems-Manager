@@ -149,12 +149,13 @@ export function useEmployees() {
       // First get all employees
       const { data: allEmployees, error: employeesError } = await supabase
         .from('employees')
-        .select('id, name, user_id, role, phone_number, email, employment_type, is_always_needed, last_worked_date, total_hours_worked, created_at, updated_at')
+        .select('id, name, user_id, role, phone_number, employment_type, is_always_needed, last_worked_date, total_hours_worked, created_at, updated_at')
         .order('name')
 
       if (employeesError) {
-        console.error('Error fetching employees:', employeesError)
-        throw employeesError
+        console.warn('Error fetching employees:', employeesError.message || employeesError)
+        // Return empty array instead of throwing
+        return []
       }
 
       if (!allEmployees || allEmployees.length === 0) {
@@ -169,8 +170,8 @@ export function useEmployees() {
         .eq('event_id', eventId)
 
       if (statusError) {
-        console.warn('Error fetching statuses (this is OK if no statuses exist yet):', statusError)
-        // Don't throw error for status fetch - it's OK if no statuses exist yet
+        console.warn('Error fetching statuses (this is OK if no statuses exist yet):', statusError.message || statusError)
+        // Continue with empty statuses instead of failing
       }
 
       // Create a map of employee ID to status
@@ -192,8 +193,8 @@ export function useEmployees() {
       return employeesWithStatus
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch employees with status'
-      console.error('Error fetching employees with status:', errorMessage)
-      // Don't set error state here, let the calling function handle it
+      console.warn('Error fetching employees with status:', errorMessage)
+      // Always return empty array, never throw
       return []
     }
   }, [])

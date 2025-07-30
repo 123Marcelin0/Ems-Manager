@@ -1,11 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Filter, ChevronDown, ChevronUp, User, Check, X, Info, Search } from "lucide-react"
+import { Filter, ChevronDown, ChevronUp, User, Check, X, Info, Search, RefreshCw, AlertCircle } from "lucide-react"
+import { useEmployeeRoleSync } from "@/hooks/use-employee-role-sync"
+import { useEmployees } from "@/hooks/use-employees"
+import { useToast } from "@/hooks/use-toast"
 
 // Define the role hierarchy (from highest to lowest)
 const roleHierarchy = [
@@ -55,49 +58,17 @@ const roleConfig = {
   },
 }
 
-// Mock user data
-const mockUsers: UserRole[] = [
-  {
-    id: "USER001",
-    name: "Anna Schmidt",
-    phone: "+49 123 456 7890",
-    mainRole: "allrounder",
-    activeRoles: ["allrounder", "versorger", "verkauf", "essen"],
-    lastUpdated: "2025-01-15"
-  },
-  {
-    id: "USER002", 
-    name: "Max Müller",
-    phone: "+49 123 456 7891",
-    mainRole: "versorger",
-    activeRoles: ["versorger", "verkauf", "essen"],
-    lastUpdated: "2025-01-14"
-  },
-  {
-    id: "USER003",
-    name: "Lisa Weber", 
-    phone: "+49 123 456 7892",
-    mainRole: "verkauf",
-    activeRoles: ["verkauf", "essen"],
-    lastUpdated: "2025-01-13"
-  },
-  {
-    id: "USER004",
-    name: "Tom Fischer",
-    phone: "+49 123 456 7893", 
-    mainRole: "manager",
-    activeRoles: ["manager", "allrounder", "versorger", "verkauf", "essen"],
-    lastUpdated: "2025-01-15"
-  },
-  {
-    id: "USER005",
-    name: "Sarah Klein",
-    phone: "+49 123 456 7894",
-    mainRole: "essen",
-    activeRoles: ["essen"],
-    lastUpdated: "2025-01-12"
+// Transform database employee to UserRole format
+const transformEmployeeToUserRole = (employee: any): UserRole => {
+  return {
+    id: employee.id,
+    name: employee.name,
+    phone: employee.phone_number,
+    mainRole: employee.role,
+    activeRoles: employee.performableRoles || [employee.role],
+    lastUpdated: new Date(employee.updated_at).toLocaleDateString('de-DE')
   }
-]
+}
 
 interface RoleManagementProps {
   searchQuery?: string
@@ -106,9 +77,76 @@ interface RoleManagementProps {
 }
 
 export function RoleManagement({ searchQuery = "", setSearchQuery, onNavigateToEmployeeOverview }: RoleManagementProps) {
-  const [users, setUsers] = useState<UserRole[]>(mockUsers)
+  const [users, setUsers] = useState<UserRole[]>([])
   const [roleFilter, setRoleFilter] = useState<string>("all")
   const [isHierarchyExpanded, setIsHierarchyExpanded] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
+  
+  const { employees, loading: employeesLoading, fetchEmployees } = useEmployees()
+  const { 
+    loading: roleLoading, 
+    error: roleError,
+    updateEmployeeRole,
+    syncAllEmployeeRoles,
+    getEmployeesWithCapabilities,
+    getRoleHierarchy
+  } = useEmployeeRoleSync()
+  const { toast } = useToast()
+
+  // Load employees with capabilities on mount
+  useEffect(() => {
+    loadEmployeesWithCapabilities()
+  }, [])
+
+  const loadEmployeesWithCapabilities = async () => {
+    try {
+      const employeesWithCapabilities = await getEmployeesWithCapabilities()
+      const transformedUsers = employeesWithCapabilities.map(transformEmployeeToUserRole)
+      setUsers(transformedUsers)
+    } catch (error) {
+      console.error('Failed to load employees with capabilities:', error)
+      toast({
+        title: "Fehler beim Laden",
+        description: "Mitarbeiterdaten konnten nicht geladen werden.",
+        variant: "destructive"
+      })
+    }
+  }
+
+  // Sync all employee roles
+  const handleSyncAllRoles = async () => {
+    setIsSyncing(true)
+    try {
+      const result = await syncAllEmployeeRoles()
+      
+      toast({
+        title: "Rollen synchronisiert!",
+        description: `${result.synced} Mitarbeiter erfolgreich synchronisiert.`,
+      })
+      
+      if (result.errors.length > 0) {
+        console.warn('Sync errors:', result.errors)
+        toast({
+          title: "Teilweise Fehler",
+          description: `${result.errors.length} Fehler bei der Synchronisation.`,
+          variant: "destructive"
+        })
+      }
+      
+      // Reload data
+      await loadEmployeesWithCapabilities()
+      
+    } catch (error) {
+      console.error('Failed to sync roles:', error)
+      toast({
+        title: "Synchronisation fehlgeschlagen",
+        description: "Rollen konnten nicht synchronisiert werden.",
+        variant: "destructive"
+      })
+    } finally {
+      setIsSyncing(false)
+    }
+  }
 
   const handleEmployeeClick = (employeeId: string) => {
     // Navigate to employee overview page with the selected employee
@@ -132,21 +170,40 @@ export function RoleManagement({ searchQuery = "", setSearchQuery, onNavigateToE
   }
 
   // Handle main role change
-  const handleMainRoleChange = (userId: string, newMainRole: Role) => {
-    setUsers(prev => 
-      prev.map(user => {
-        if (user.id === userId) {
-          const newActiveRoles = getActiveRolesFromMainRole(newMainRole);
-          return { 
-            ...user, 
-            mainRole: newMainRole, 
-            activeRoles: newActiveRoles,
-            lastUpdated: new Date().toISOString().split('T')[0]
-          };
-        }
-        return user;
+  const handleMainRoleChange = async (userId: string, newMainRole: Role) => {
+    try {
+      // Update in database
+      await updateEmployeeRole(userId, newMainRole)
+      
+      // Update local state
+      setUsers(prev => 
+        prev.map(user => {
+          if (user.id === userId) {
+            const newActiveRoles = getActiveRolesFromMainRole(newMainRole);
+            return { 
+              ...user, 
+              mainRole: newMainRole, 
+              activeRoles: newActiveRoles,
+              lastUpdated: new Date().toLocaleDateString('de-DE')
+            };
+          }
+          return user;
+        })
+      )
+      
+      toast({
+        title: "Rolle aktualisiert!",
+        description: `Rolle erfolgreich auf ${roleConfig[newMainRole].label} geändert.`,
       })
-    )
+      
+    } catch (error) {
+      console.error('Failed to update role:', error)
+      toast({
+        title: "Fehler beim Aktualisieren",
+        description: "Rolle konnte nicht geändert werden.",
+        variant: "destructive"
+      })
+    }
   }
 
   // Stats for header
@@ -180,27 +237,50 @@ export function RoleManagement({ searchQuery = "", setSearchQuery, onNavigateToE
               )}
             </Button>
           </div>
-          {/* Role Filter */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2 rounded-xl border-gray-200">
-                <Filter className="h-4 w-4" />
-                Rolle: {roleFilter === "all" ? "Alle" : roleConfig[roleFilter as Role]?.label}
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setRoleFilter("all")}>
-                Alle Rollen
-              </DropdownMenuItem>
-              {roleHierarchy.map((role) => (
-                <DropdownMenuItem key={role} onClick={() => setRoleFilter(role)}>
-                  {roleConfig[role].label}
+          
+          <div className="flex items-center gap-2">
+            {/* Sync Button */}
+            <Button
+              onClick={handleSyncAllRoles}
+              disabled={isSyncing || roleLoading}
+              variant="outline"
+              className="gap-2 rounded-xl border-gray-200"
+            >
+              <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? 'Synchronisiere...' : 'Rollen synchronisieren'}
+            </Button>
+            
+            {/* Role Filter */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2 rounded-xl border-gray-200">
+                  <Filter className="h-4 w-4" />
+                  Rolle: {roleFilter === "all" ? "Alle" : roleConfig[roleFilter as Role]?.label}
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setRoleFilter("all")}>
+                  Alle Rollen
                 </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                {roleHierarchy.map((role) => (
+                  <DropdownMenuItem key={role} onClick={() => setRoleFilter(role)}>
+                    {roleConfig[role].label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
+        
+        {/* Error Display */}
+        {roleError && (
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-red-600" />
+            <span className="text-sm text-red-700">{roleError}</span>
+          </div>
+        )}
+        
         {isHierarchyExpanded && (
           <div className="space-y-3 mt-4">
             {roleHierarchy.map((role) => (
@@ -217,9 +297,18 @@ export function RoleManagement({ searchQuery = "", setSearchQuery, onNavigateToE
 
 
 
+      {/* Loading State */}
+      {(employeesLoading || roleLoading) && (
+        <div className="text-center py-12">
+          <RefreshCw className="h-8 w-8 animate-spin mx-auto text-gray-400 mb-4" />
+          <p className="text-gray-600">Lade Mitarbeiterdaten...</p>
+        </div>
+      )}
+
       {/* Users List */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filteredUsers.map((user) => (
+      {!employeesLoading && !roleLoading && (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {filteredUsers.map((user) => (
           <div
             key={user.id}
             className="p-6 bg-white rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.08)] border border-gray-100 hover:shadow-lg transition-all duration-200"
@@ -273,11 +362,12 @@ export function RoleManagement({ searchQuery = "", setSearchQuery, onNavigateToE
               </p>
             </div>
           </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* No Results */}
-      {filteredUsers.length === 0 && (
+      {!employeesLoading && !roleLoading && filteredUsers.length === 0 && (
         <div className="text-center py-12">
           <div className="text-gray-400 mb-2">
             <User className="h-12 w-12 mx-auto" />

@@ -6,6 +6,7 @@ import { EventSelection } from "./work-area/event-selection"
 import { WorkAreaManagement } from "./work-area/work-area-management"
 import { WorkAreaOverview } from "./work-area/work-area-overview"
 import { useEventContext } from "@/hooks/use-event-context"
+import { useEventWorkAreaSync } from "@/hooks/use-event-work-area-sync"
 import { useEffect } from "react"
 
 interface WorkAreaAssignmentProps {
@@ -22,6 +23,14 @@ export function WorkAreaAssignment({ onBack, activeView = "event", setActiveView
   // Use global event context
   const { selectedEvent } = useEventContext()
   
+  // Use event work area sync for real-time synchronization
+  const { 
+    syncedWorkAreas, 
+    assignEmployeeToWorkArea, 
+    removeEmployeeFromWorkArea,
+    forceRefresh 
+  } = useEventWorkAreaSync()
+  
   const {
     // State
     workAreas,
@@ -29,6 +38,7 @@ export function WorkAreaAssignment({ onBack, activeView = "event", setActiveView
     searchQuery,
     selectedEmployees,
     availableEmployees: hookAvailableEmployees,
+    isLoading,
 
     // Setters
     setShowAdvancedSettings,
@@ -40,11 +50,12 @@ export function WorkAreaAssignment({ onBack, activeView = "event", setActiveView
     handleAssignEmployee,
     handleRemoveEmployee,
     handleEmployeeSelect,
+    refreshEmployeeStatuses,
   } = useWorkAreaAssignment()
 
-  // Override hook's available employees with employees from Mitteilungen table (only available ones)
+  // Transform Mitteilungen employees to work area format, filtering by status
   const mitteilungenAvailableEmployees = availableEmployees
-    .filter(emp => emp.status === "available")
+    .filter(emp => emp.status === "available" || emp.status === "selected") // Include selected employees too
     .map(emp => {
       // Determine role from notes with proper typing
       let role: "allrounder" | "versorger" | "verkauf" | "manager" | "essen" = 'allrounder'
@@ -54,19 +65,37 @@ export function WorkAreaAssignment({ onBack, activeView = "event", setActiveView
       else if (emp.notes?.includes('Manager')) role = 'manager'
       else if (emp.notes?.includes('Essen')) role = 'essen'
       
+      // Map Mitteilungen status to work area availability
+      let availability: "available" | "unavailable" | "assigned" = "available"
+      if (emp.status === "selected") {
+        availability = "assigned"
+      } else if (emp.status === "unavailable") {
+        availability = "unavailable"
+      }
+      
       return {
         id: emp.id,
         name: emp.name,
         role: role,
         skills: [], 
-        availability: "available" as const
+        availability
       }
     })
 
-  // Update filtered employees when available employees change
+  // Update filtered employees when available employees change or when real employees are loaded
   useEffect(() => {
-    setFilteredEmployees(mitteilungenAvailableEmployees)
-  }, [availableEmployees, setFilteredEmployees])
+    // Use real employees from hook if available, otherwise use Mitteilungen employees
+    const employeesToUse = hookAvailableEmployees.length > 0 ? hookAvailableEmployees : mitteilungenAvailableEmployees
+    setFilteredEmployees(employeesToUse.filter(emp => emp.availability === "available"))
+  }, [availableEmployees, hookAvailableEmployees, setFilteredEmployees])
+
+  // Refresh employee statuses when entering the overview section
+  useEffect(() => {
+    if (activeView === "ubersicht" && selectedEvent?.id) {
+      console.log('Work Area Assignment: Entering overview section, refreshing employee statuses...')
+      refreshEmployeeStatuses()
+    }
+  }, [activeView, selectedEvent?.id, refreshEmployeeStatuses])
 
   // Handle clear selection
   const handleClearSelection = () => {
@@ -74,28 +103,59 @@ export function WorkAreaAssignment({ onBack, activeView = "event", setActiveView
     setFilteredEmployees(mitteilungenAvailableEmployees)
   }
 
-  // Enhanced assign employee handler that also updates parent status
-  const handleAssignEmployeeEnhanced = (workAreaId: string, employee: any) => {
-    handleAssignEmployee(workAreaId, employee)
-    if (onEmployeeStatusChange) {
-      onEmployeeStatusChange(employee.id, "selected")
+  // Enhanced assign employee handler that also updates parent status and database
+  const handleAssignEmployeeEnhanced = async (workAreaId: string, employee: any) => {
+    try {
+      // Update local state first for immediate UI feedback
+      handleAssignEmployee(workAreaId, employee)
+      
+      // Update parent status
+      if (onEmployeeStatusChange) {
+        onEmployeeStatusChange(employee.id, "selected")
+      }
+      
+      // Update database if we have a selected event
+      if (selectedEvent?.id) {
+        await assignEmployeeToWorkArea(employee.id, workAreaId, selectedEvent.id)
+        console.log(`✅ Employee ${employee.name} assigned to work area ${workAreaId}`)
+      }
+    } catch (error) {
+      console.error('Failed to assign employee:', error)
+      // Optionally revert local state on error
     }
   }
 
-  // Enhanced remove employee handler that also updates parent status
-  const handleRemoveEmployeeEnhanced = (workAreaId: string, employeeId: string) => {
-    handleRemoveEmployee(workAreaId, employeeId)
-    if (onEmployeeStatusChange) {
-      onEmployeeStatusChange(employeeId, "available")
+  // Enhanced remove employee handler that also updates parent status and database
+  const handleRemoveEmployeeEnhanced = async (workAreaId: string, employeeId: string) => {
+    try {
+      // Update local state first for immediate UI feedback
+      handleRemoveEmployee(workAreaId, employeeId)
+      
+      // Update parent status
+      if (onEmployeeStatusChange) {
+        onEmployeeStatusChange(employeeId, "available")
+      }
+      
+      // Update database if we have a selected event
+      if (selectedEvent?.id) {
+        await removeEmployeeFromWorkArea(employeeId, selectedEvent.id)
+        console.log(`✅ Employee removed from work area`)
+      }
+    } catch (error) {
+      console.error('Failed to remove employee:', error)
+      // Optionally revert local state on error
     }
   }
 
-  // Override the display function to use Mitteilungen employees
+  // Override the display function to use real employees or Mitteilungen employees
   const getSelectedEmployeesForDisplayEnhanced = () => {
+    const employeesToUse = hookAvailableEmployees.length > 0 ? hookAvailableEmployees : mitteilungenAvailableEmployees
+    const availableEmployeesToShow = employeesToUse.filter(emp => emp.availability === "available")
+    
     if (selectedEmployees.length === 0) {
-      return mitteilungenAvailableEmployees
+      return availableEmployeesToShow
     }
-    return mitteilungenAvailableEmployees.filter((emp: any) => selectedEmployees.includes(emp.id))
+    return availableEmployeesToShow.filter((emp: any) => selectedEmployees.includes(emp.id))
   }
 
   if (showAdvancedSettings) {
@@ -128,10 +188,13 @@ export function WorkAreaAssignment({ onBack, activeView = "event", setActiveView
         )
       case "arbeitsbereiche":
         return <WorkAreaManagement 
+          key={`work-areas-${selectedEvent?.id}-${activeView}`} // Force remount when event or view changes
           onContinue={() => setActiveView?.("ubersicht")} 
           onWorkAreasSaved={() => {
-            // Work areas saved - navigation will be unlocked via event listener
-            console.log('Work areas saved, navigation will update automatically')
+            // Work areas saved - force refresh to sync latest data
+            console.log('Work areas saved, refreshing sync data...')
+            forceRefresh()
+            refreshEmployeeStatuses()
           }}
         />
       case "ubersicht":
@@ -139,7 +202,7 @@ export function WorkAreaAssignment({ onBack, activeView = "event", setActiveView
         return (
           <WorkAreaOverview
             workAreas={workAreas}
-            availableEmployees={mitteilungenAvailableEmployees} // Use employees from Mitteilungen table
+            availableEmployees={hookAvailableEmployees.length > 0 ? hookAvailableEmployees : mitteilungenAvailableEmployees} // Use real employees if available
             selectedEmployees={selectedEmployees}
             searchQuery={searchQuery}
             getSelectedEmployeesForDisplay={getSelectedEmployeesForDisplayEnhanced}

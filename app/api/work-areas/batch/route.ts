@@ -19,6 +19,14 @@ export async function POST(request: Request) {
     try {
       // If replace_existing is true, delete existing work areas for this event
       if (replace_existing) {
+        console.log(`🗑️ Deleting existing work areas for event: ${event_id}`);
+        
+        // First, get count of existing areas for logging
+        const { count: existingCount } = await supabaseAdmin
+          .from('work_areas')
+          .select('*', { count: 'exact', head: true })
+          .eq('event_id', event_id);
+
         const { error: deleteError } = await supabaseAdmin
           .from('work_areas')
           .delete()
@@ -28,6 +36,8 @@ export async function POST(request: Request) {
           console.error('Error deleting existing work areas:', deleteError);
           return NextResponse.json({ success: false, error: deleteError.message }, { status: 500 });
         }
+        
+        console.log(`✅ Deleted ${existingCount || 0} existing work areas and their assignments`);
       }
 
       // Prepare work areas data with defaults

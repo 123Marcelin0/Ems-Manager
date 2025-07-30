@@ -24,6 +24,17 @@ export function SaveChoiceDialog({
             Wie möchten Sie die Arbeitsbereiche speichern?
           </DialogDescription>
         </DialogHeader>
+        
+        {/* Overwrite Warning */}
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-2">
+          <div className="flex items-start gap-2">
+            <div className="h-4 w-4 bg-amber-500 rounded-full mt-0.5 flex-shrink-0"></div>
+            <div className="text-sm text-amber-800">
+              <strong>Hinweis:</strong> Das Speichern überschreibt alle bestehenden Arbeitsbereiche für dieses Event. 
+              Bereits zugewiesene Mitarbeiter werden automatisch entfernt.
+            </div>
+          </div>
+        </div>
         <div className="flex flex-col gap-3 py-4">
           <Button
             onClick={onSaveNormal}
@@ -32,7 +43,7 @@ export function SaveChoiceDialog({
             <Save className="h-5 w-5" />
             <div className="text-left">
               <div className="font-medium">Normal speichern</div>
-              <div className="text-sm opacity-90">Arbeitsbereiche für dieses Event speichern</div>
+              <div className="text-sm opacity-90">Überschreibt bestehende Konfiguration für dieses Event</div>
             </div>
           </Button>
           <Button

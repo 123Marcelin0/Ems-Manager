@@ -7,7 +7,12 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
-import { ChevronDown, ArrowLeft, Clock, DollarSign, Calendar, FileSpreadsheet, CalendarDays, Users, BarChart3, MapPin, Euro } from "lucide-react"
+import { ChevronDown, ArrowLeft, Clock, DollarSign, Calendar, FileSpreadsheet, CalendarDays, Users, BarChart3, MapPin, Euro, Settings, RefreshCw } from "lucide-react"
+import { useEmployeeRoleSync } from "@/hooks/use-employee-role-sync"
+import { useToast } from "@/hooks/use-toast"
+import { useEventContext } from "@/hooks/use-event-context"
+import { useEmployees } from "@/hooks/use-employees"
+import { supabase } from "@/lib/supabase"
 
 interface EmployeeWorkRecord {
   id: string
@@ -240,6 +245,104 @@ export function EmployeeOverview({ viewMode = "mitarbeiter", setViewMode, select
   const [sortBy, setSortBy] = useState("name")
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeWorkRecord | null>(null)
   const [selectedEvent, setSelectedEvent] = useState<EventRecord | null>(null)
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [availableEmployees, setAvailableEmployees] = useState<any[]>([])
+  const [loadingAvailableEmployees, setLoadingAvailableEmployees] = useState(false)
+  
+  // Use global event context and employee hooks
+  const { selectedEvent: contextSelectedEvent } = useEventContext()
+  const { employees: allEmployees } = useEmployees()
+  const { syncAllEmployeeRoles, getRoleStatistics } = useEmployeeRoleSync()
+  const { toast } = useToast()
+
+  // Fetch employees who are currently available for the selected event
+  const fetchAvailableEmployees = async (eventId: string) => {
+    if (!eventId) return
+    
+    setLoadingAvailableEmployees(true)
+    try {
+      const { data, error } = await supabase
+        .from('employee_event_status')
+        .select(`
+          *,
+          employees (
+            id,
+            name,
+            phone_number,
+            role,
+            employment_type,
+            total_hours_worked,
+            last_worked_date
+          )
+        `)
+        .eq('event_id', eventId)
+        .eq('status', 'available') // Only get currently available employees
+
+      if (error) throw error
+      
+      // Transform to match the expected format
+      const transformedEmployees = data?.map(item => ({
+        id: item.employees.id,
+        name: item.employees.name,
+        role: item.employees.role,
+        phone_number: item.employees.phone_number,
+        employment_type: item.employees.employment_type,
+        total_hours_worked: item.employees.total_hours_worked || 0,
+        last_worked_date: item.employees.last_worked_date,
+        status: item.status,
+        responded_at: item.responded_at
+      })) || []
+      
+      setAvailableEmployees(transformedEmployees)
+      console.log(`📋 EmployeeOverview: Loaded ${transformedEmployees.length} available employees for event ${eventId}`)
+    } catch (error) {
+      console.error('Error fetching available employees:', error)
+      setAvailableEmployees([])
+    } finally {
+      setLoadingAvailableEmployees(false)
+    }
+  }
+
+  // Fetch available employees when context event changes
+  useEffect(() => {
+    if (contextSelectedEvent?.id) {
+      fetchAvailableEmployees(contextSelectedEvent.id)
+    }
+  }, [contextSelectedEvent?.id])
+
+  // Set up real-time subscription for employee status changes
+  useEffect(() => {
+    if (!contextSelectedEvent?.id) return
+
+    const subscription = supabase
+      .channel('employee-overview-status-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'employee_event_status',
+        filter: `event_id=eq.${contextSelectedEvent.id}`
+      }, () => {
+        console.log('📡 EmployeeOverview: Received employee status change, refreshing available employees...')
+        fetchAvailableEmployees(contextSelectedEvent.id)
+      })
+      .subscribe()
+
+    // Listen for custom employee status change events
+    const handleEmployeeStatusChange = (event: CustomEvent) => {
+      const { eventId } = event.detail
+      if (eventId === contextSelectedEvent.id) {
+        console.log('📡 EmployeeOverview: Received custom employee status change event, refreshing...')
+        fetchAvailableEmployees(contextSelectedEvent.id)
+      }
+    }
+
+    window.addEventListener('employeeStatusChanged', handleEmployeeStatusChange as EventListener)
+
+    return () => {
+      subscription.unsubscribe()
+      window.removeEventListener('employeeStatusChanged', handleEmployeeStatusChange as EventListener)
+    }
+  }, [contextSelectedEvent?.id])
 
   // Set selected employee when selectedEmployeeId changes (for Mitarbeiter view)
   useEffect(() => {
@@ -261,6 +364,37 @@ export function EmployeeOverview({ viewMode = "mitarbeiter", setViewMode, select
 
   const handleExportEventDetails = (event: EventRecord) => {
     console.log("Exporting event details to Excel:", event.name)
+  }
+
+  const handleSyncRoles = async () => {
+    setIsSyncing(true)
+    try {
+      const result = await syncAllEmployeeRoles()
+      
+      toast({
+        title: "Rollen synchronisiert!",
+        description: `${result.synced} Mitarbeiter erfolgreich synchronisiert.`,
+      })
+      
+      if (result.errors.length > 0) {
+        console.warn('Sync errors:', result.errors)
+        toast({
+          title: "Teilweise Fehler",
+          description: `${result.errors.length} Fehler bei der Synchronisation.`,
+          variant: "destructive"
+        })
+      }
+      
+    } catch (error) {
+      console.error('Failed to sync roles:', error)
+      toast({
+        title: "Synchronisation fehlgeschlagen",
+        description: "Rollen konnten nicht synchronisiert werden.",
+        variant: "destructive"
+      })
+    } finally {
+      setIsSyncing(false)
+    }
   }
 
   const getStatusColor = (status: string) => {
@@ -528,11 +662,16 @@ export function EmployeeOverview({ viewMode = "mitarbeiter", setViewMode, select
     )
   }
 
-  // Mitarbeiter View (existing functionality)
-  const filteredEmployees = mockEmployeeData.filter((employee) => {
-    const matchesPeriod = isCustomRange ? true : employee.period === selectedPeriod
-    return matchesPeriod
-  })
+  // Mitarbeiter View - Use available employees from current event
+  const filteredEmployees = availableEmployees.map(emp => ({
+    id: emp.id,
+    employeeName: emp.name,
+    period: contextSelectedEvent?.date || "Current Event",
+    totalHours: emp.total_hours_worked || 0,
+    totalPayment: (emp.total_hours_worked || 0) * 15.50, // Default hourly rate
+    hourlyRate: 15.50,
+    events: [] // Could be populated with historical events if needed
+  }))
 
   const sortedEmployees = [...filteredEmployees].sort((a, b) => {
     switch (sortBy) {
@@ -655,6 +794,16 @@ export function EmployeeOverview({ viewMode = "mitarbeiter", setViewMode, select
           </div>
           <div className="flex gap-3">
             <Button
+              onClick={handleSyncRoles}
+              disabled={isSyncing}
+              variant="outline"
+              className="gap-2 rounded-xl border-gray-200"
+            >
+              <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? 'Synchronisiere...' : 'Rollen synchronisieren'}
+            </Button>
+            
+            <Button
               onClick={handleExportToExcel}
               className="gap-2 rounded-xl bg-gradient-to-r from-green-500 to-green-600 font-medium shadow-sm transition-all duration-200 hover:from-green-600 hover:to-green-700"
             >
@@ -692,8 +841,14 @@ export function EmployeeOverview({ viewMode = "mitarbeiter", setViewMode, select
       {/* Employee Table */}
       <div className="bg-white rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.08)] overflow-hidden">
         <div className="p-6 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">Mitarbeiter Arbeitsübersicht</h2>
-          <p className="text-sm text-gray-600 mt-1">{filteredEmployees.length} Mitarbeiter für {isCustomRange ? "Benutzerdefiniert" : selectedPeriod}</p>
+          <h2 className="text-lg font-semibold text-gray-900">Verfügbare Mitarbeiter</h2>
+          <p className="text-sm text-gray-600 mt-1">
+            {loadingAvailableEmployees ? 'Lade...' : 
+             contextSelectedEvent ? 
+               `${filteredEmployees.length} verfügbare Mitarbeiter für ${contextSelectedEvent.name}` :
+               'Kein Event ausgewählt'
+            }
+          </p>
         </div>
         <div className="overflow-x-auto">
           <Table>
@@ -706,33 +861,64 @@ export function EmployeeOverview({ viewMode = "mitarbeiter", setViewMode, select
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedEmployees.map((employee, index) => (
-                <TableRow
-                  key={employee.id}
-                  className="group cursor-pointer border-gray-100/80 transition-colors duration-200 hover:bg-gray-50/50"
-                  style={{ animationDelay: `${index * 50}ms` }}
-                  onClick={() => setSelectedEmployee(employee)}
-                >
-                  <TableCell className="px-6 py-4 font-medium text-gray-900">{employee.period}</TableCell>
-                  <TableCell className="py-4">
-                    <div className="font-medium text-blue-600 hover:text-blue-700 transition-colors">
-                      {employee.employeeName}
-                    </div>
-                  </TableCell>
-                  <TableCell className="py-4">
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-gray-400" />
-                      <span className="font-medium text-gray-900">{employee.totalHours}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="py-4">
-                    <div className="flex items-center gap-2">
-                      <DollarSign className="h-4 w-4 text-green-500" />
-                      <span className="font-bold text-green-600">€{employee.totalPayment.toFixed(2)}</span>
+              {loadingAvailableEmployees ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="py-12 text-center">
+                    <div className="flex items-center justify-center gap-2 text-gray-500">
+                      <div className="w-4 h-4 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                      Lade verfügbare Mitarbeiter...
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : !contextSelectedEvent ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="py-12 text-center">
+                    <div className="text-gray-500">
+                      <Users className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                      <p>Kein Event ausgewählt</p>
+                      <p className="text-sm">Wählen Sie ein Event aus, um verfügbare Mitarbeiter zu sehen</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : sortedEmployees.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="py-12 text-center">
+                    <div className="text-gray-500">
+                      <Users className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                      <p>Keine verfügbaren Mitarbeiter</p>
+                      <p className="text-sm">Für dieses Event sind aktuell keine Mitarbeiter als "verfügbar" markiert</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                sortedEmployees.map((employee, index) => (
+                  <TableRow
+                    key={employee.id}
+                    className="group cursor-pointer border-gray-100/80 transition-colors duration-200 hover:bg-gray-50/50"
+                    style={{ animationDelay: `${index * 50}ms` }}
+                    onClick={() => setSelectedEmployee(employee)}
+                  >
+                    <TableCell className="px-6 py-4 font-medium text-gray-900">{employee.period}</TableCell>
+                    <TableCell className="py-4">
+                      <div className="font-medium text-blue-600 hover:text-blue-700 transition-colors">
+                        {employee.employeeName}
+                      </div>
+                    </TableCell>
+                    <TableCell className="py-4">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-gray-400" />
+                        <span className="font-medium text-gray-900">{employee.totalHours}h</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="py-4">
+                      <div className="flex items-center gap-2">
+                        <DollarSign className="h-4 w-4 text-green-500" />
+                        <span className="font-bold text-green-600">€{employee.totalPayment.toFixed(2)}</span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </div>

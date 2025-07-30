@@ -66,20 +66,18 @@ export function useAutoAssignment({
     })
   }, [workAreas, availableEmployees, onAssignEmployee])
 
-  // Redo assignment - unassign all and reassign with variation
+  // Redo assignment - unassign all employees and move them back to sidebar
   const handleRedoAssignment = useCallback(() => {
-    // First, unassign all employees from all work areas
+    // Unassign all employees from all work areas (move them back to sidebar)
     workAreas.forEach(area => {
       area.assignedEmployees.forEach(employee => {
         onRemoveEmployee(area.id, employee.id)
       })
     })
-
-    // Wait a bit for the state to update, then reassign with shuffle
-    setTimeout(() => {
-      handleAutoAssign(true)
-    }, 100)
-  }, [workAreas, onRemoveEmployee, handleAutoAssign])
+    
+    // Don't reassign automatically - just leave them in the sidebar
+    console.log('📋 Redo: All employees moved back to sidebar')
+  }, [workAreas, onRemoveEmployee])
 
   return {
     handleAutoAssign,
