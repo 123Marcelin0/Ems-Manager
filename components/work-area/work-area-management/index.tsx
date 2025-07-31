@@ -160,7 +160,10 @@ export function WorkAreaManagement({ onContinue, onWorkAreasSaved }: WorkAreaMan
         setWorkAreas(transformedDbAreas)
         setSelectedLocation(transformedDbAreas[0].location)
         setIsDataLoaded(true)
-        setIsSaved(true) // Mark as saved since we loaded from database
+        // IMPORTANT: Keep configuration editable after loading from database
+        // Don't mark as saved to allow continued editing
+        setIsSaved(false)
+        console.log('📋 WorkAreaManagement: Configuration loaded and remains editable') 
       } else if (isMountedRef.current && !isDataLoaded) {
         // Only set defaults if we haven't loaded data yet
         console.log(`📋 No saved work areas found, using defaults for location ${selectedLocation}`)
@@ -438,7 +441,8 @@ export function WorkAreaManagement({ onContinue, onWorkAreasSaved }: WorkAreaMan
       setShowSuccessState(true)
       await new Promise(resolve => setTimeout(resolve, 1000))
       
-      setIsSaved(true)
+      // IMPORTANT: Don't mark as saved to keep configuration editable
+      // setIsSaved(true) - Removed to maintain editability
       setIsSaving(false)
       setShowSavingPopup(false)
       setShowSuccessState(false)
@@ -446,12 +450,16 @@ export function WorkAreaManagement({ onContinue, onWorkAreasSaved }: WorkAreaMan
       const locationName = locations.find(l => l.id === selectedLocation)?.label || selectedLocation
       toast({
         title: "Arbeitsbereiche gespeichert!",
-        description: `Arbeitsbereichskonfiguration für "${selectedEvent.title}" am ${locationName} gespeichert.`,
+        description: `Arbeitsbereichskonfiguration für "${selectedEvent.title}" am ${locationName} gespeichert. ✏️ Konfiguration bleibt bearbeitbar.`,
       })
       
-      console.log('✅ Arbeitsbereiche: Configuration saved for event:', selectedEvent?.id)
+      console.log('✅ Arbeitsbereiche: Configuration saved for event:', selectedEvent?.id, '- Configuration remains editable')
       
+      // Dispatch events to update configuration status
       window.dispatchEvent(new CustomEvent('workAreasChanged'))
+      window.dispatchEvent(new CustomEvent('configurationChanged', { 
+        detail: { eventId: selectedEvent.id, type: 'workAreas' } 
+      }))
       
       if (onWorkAreasSaved) {
         onWorkAreasSaved()

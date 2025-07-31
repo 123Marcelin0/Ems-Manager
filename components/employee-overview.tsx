@@ -161,56 +161,152 @@ const mockEventsData: EventRecord[] = [
         totalPay: 82.50
       }
     ]
+  },
+  {
+    id: "EVENT004",
+    name: "Wintermarkt 2025",
+    date: "15.12.2025",
+    location: "Stadtplatz",
+    totalEmployees: 10,
+    totalHours: 80,
+    totalCost: 1200.00,
+    status: "upcoming",
+    employees: [
+      {
+        id: "EMP005",
+        name: "Lisa Wagner",
+        role: "Essen",
+        startTime: "10:00",
+        endTime: "18:00",
+        hoursWorked: 8,
+        hourlyRate: 15.00,
+        totalPay: 120.00
+      },
+      {
+        id: "EMP006",
+        name: "Michael Weber",
+        role: "Verkauf",
+        startTime: "09:00",
+        endTime: "17:00",
+        hoursWorked: 8,
+        hourlyRate: 16.00,
+        totalPay: 128.00
+      }
+    ]
+  },
+  {
+    id: "EVENT005",
+    name: "Hochzeitsmesse",
+    date: "20.03.2025",
+    location: "Hotel Residenz",
+    totalEmployees: 6,
+    totalHours: 48,
+    totalCost: 768.00,
+    status: "completed",
+    employees: [
+      {
+        id: "EMP003",
+        name: "Sarah Klein",
+        role: "Manager",
+        startTime: "08:00",
+        endTime: "16:00",
+        hoursWorked: 8,
+        hourlyRate: 18.00,
+        totalPay: 144.00
+      },
+      {
+        id: "EMP007",
+        name: "Julia Hoffmann",
+        role: "Versorger",
+        startTime: "09:00",
+        endTime: "17:00",
+        hoursWorked: 8,
+        hourlyRate: 16.50,
+        totalPay: 132.00
+      }
+    ]
+  },
+  {
+    id: "EVENT006",
+    name: "Firmenjubiläum",
+    date: "10.06.2025",
+    location: "Messehalle",
+    totalEmployees: 18,
+    totalHours: 144,
+    totalCost: 2304.00,
+    status: "ongoing",
+    employees: [
+      {
+        id: "EMP008",
+        name: "Peter Wagner",
+        role: "Allrounder",
+        startTime: "07:00",
+        endTime: "15:00",
+        hoursWorked: 8,
+        hourlyRate: 16.00,
+        totalPay: 128.00
+      },
+      {
+        id: "EMP009",
+        name: "Maria Becker",
+        role: "Verkauf",
+        startTime: "14:00",
+        endTime: "22:00",
+        hoursWorked: 8,
+        hourlyRate: 15.50,
+        totalPay: 124.00
+      }
+    ]
   }
 ]
 
-// Mock employee data (keeping existing structure)
+// Mock employee data (keeping existing structure) - Updated with German names and locations
 const mockEmployeeData: EmployeeWorkRecord[] = [
   {
     id: "1",
-    employeeName: "Alice Johnson",
-    period: "July 2023",
-    totalHours: 32,
-    totalPayment: 640,
-    hourlyRate: 20,
+    employeeName: "Anna Schmidt",
+    period: "Januar 2025",
+    totalHours: 45,
+    totalPayment: 697.50,
+    hourlyRate: 15.50,
     events: [
       {
         id: "E1",
-        eventName: "Summer Festival",
-        date: "2023-07-15",
+        eventName: "Neujahrsfeier",
+        date: "2025-01-01",
         hoursWorked: 8,
-        hourlyRate: 20,
-        location: "Downtown Park",
-        startTime: "09:00",
-        endTime: "17:00"
+        hourlyRate: 15.50,
+        location: "Emslandarena",
+        startTime: "18:00",
+        endTime: "02:00"
       },
       {
         id: "E2", 
-        eventName: "Corporate Gala",
-        date: "2023-07-22",
+        eventName: "Wintermarkt",
+        date: "2025-01-15",
         hoursWorked: 6,
-        hourlyRate: 20,
-        location: "Grand Hotel",
-        startTime: "18:00",
-        endTime: "24:00"
+        hourlyRate: 15.50,
+        location: "Stadtplatz",
+        startTime: "10:00",
+        endTime: "16:00"
       }
     ]
   },
   {
     id: "2",
-    employeeName: "Bob Smith", 
-    period: "July 2023",
-    totalHours: 28,
-    totalPayment: 560,
-    hourlyRate: 20,
+    employeeName: "Thomas Müller", 
+    period: "Januar 2025",
+    totalHours: 38,
+    totalPayment: 608.00,
+    hourlyRate: 16.00,
     events: [
       {
         id: "E3",
-        eventName: "Product Launch",
-        date: "2023-07-10",
+        eventName: "Firmenevent",
+        date: "2025-01-10",
         hoursWorked: 10,
-        hourlyRate: 20,
-        location: "Convention Center",
+        hourlyRate: 16.00,
+        location: "Emslandhalle",
         startTime: "08:00",
         endTime: "18:00"
       }
@@ -218,21 +314,61 @@ const mockEmployeeData: EmployeeWorkRecord[] = [
   },
   {
     id: "3",
-    employeeName: "Charlie Brown",
-    period: "July 2023", 
-    totalHours: 40,
-    totalPayment: 800,
-    hourlyRate: 20,
+    employeeName: "Sarah Klein",
+    period: "Januar 2025", 
+    totalHours: 52,
+    totalPayment: 936.00,
+    hourlyRate: 18.00,
     events: [
       {
         id: "E4",
-        eventName: "Music Concert",
-        date: "2023-07-28",
+        eventName: "Konzert",
+        date: "2025-01-20",
         hoursWorked: 12,
-        hourlyRate: 20,
-        location: "Arena Stadium",
+        hourlyRate: 18.00,
+        location: "Arena",
         startTime: "16:00",
         endTime: "04:00"
+      }
+    ]
+  },
+  {
+    id: "4",
+    employeeName: "Michael Weber",
+    period: "Januar 2025", 
+    totalHours: 41,
+    totalPayment: 656.00,
+    hourlyRate: 16.00,
+    events: [
+      {
+        id: "E5",
+        eventName: "Messe",
+        date: "2025-01-25",
+        hoursWorked: 9,
+        hourlyRate: 16.00,
+        location: "Messehalle",
+        startTime: "07:00",
+        endTime: "16:00"
+      }
+    ]
+  },
+  {
+    id: "5",
+    employeeName: "Lisa Wagner",
+    period: "Januar 2025", 
+    totalHours: 35,
+    totalPayment: 525.00,
+    hourlyRate: 15.00,
+    events: [
+      {
+        id: "E6",
+        eventName: "Hochzeit",
+        date: "2025-01-30",
+        hoursWorked: 8,
+        hourlyRate: 15.00,
+        location: "Hotel Residenz",
+        startTime: "14:00",
+        endTime: "22:00"
       }
     ]
   }
@@ -662,16 +798,132 @@ export function EmployeeOverview({ viewMode = "mitarbeiter", setViewMode, select
     )
   }
 
-  // Mitarbeiter View - Use available employees from current event
-  const filteredEmployees = availableEmployees.map(emp => ({
-    id: emp.id,
-    employeeName: emp.name,
-    period: contextSelectedEvent?.date || "Current Event",
-    totalHours: emp.total_hours_worked || 0,
-    totalPayment: (emp.total_hours_worked || 0) * 15.50, // Default hourly rate
-    hourlyRate: 15.50,
-    events: [] // Could be populated with historical events if needed
-  }))
+  // Example employees for demonstration when no real data is available
+  const exampleEmployees: EmployeeWorkRecord[] = [
+    {
+      id: "example-1",
+      employeeName: "Anna Schmidt",
+      period: "Januar 2025",
+      totalHours: 45,
+      totalPayment: 697.50,
+      hourlyRate: 15.50,
+      events: [
+        {
+          id: "E1",
+          eventName: "Neujahrsfeier",
+          date: "2025-01-01",
+          hoursWorked: 8,
+          hourlyRate: 15.50,
+          location: "Emslandarena",
+          startTime: "18:00",
+          endTime: "02:00"
+        },
+        {
+          id: "E2",
+          eventName: "Wintermarkt",
+          date: "2025-01-15",
+          hoursWorked: 6,
+          hourlyRate: 15.50,
+          location: "Stadtplatz",
+          startTime: "10:00",
+          endTime: "16:00"
+        }
+      ]
+    },
+    {
+      id: "example-2",
+      employeeName: "Thomas Müller",
+      period: "Januar 2025",
+      totalHours: 38,
+      totalPayment: 608.00,
+      hourlyRate: 16.00,
+      events: [
+        {
+          id: "E3",
+          eventName: "Firmenevent",
+          date: "2025-01-10",
+          hoursWorked: 10,
+          hourlyRate: 16.00,
+          location: "Emslandhalle",
+          startTime: "08:00",
+          endTime: "18:00"
+        }
+      ]
+    },
+    {
+      id: "example-3",
+      employeeName: "Sarah Klein",
+      period: "Januar 2025",
+      totalHours: 52,
+      totalPayment: 936.00,
+      hourlyRate: 18.00,
+      events: [
+        {
+          id: "E4",
+          eventName: "Konzert",
+          date: "2025-01-20",
+          hoursWorked: 12,
+          hourlyRate: 18.00,
+          location: "Arena",
+          startTime: "16:00",
+          endTime: "04:00"
+        }
+      ]
+    },
+    {
+      id: "example-4",
+      employeeName: "Michael Weber",
+      period: "Januar 2025",
+      totalHours: 41,
+      totalPayment: 656.00,
+      hourlyRate: 16.00,
+      events: [
+        {
+          id: "E5",
+          eventName: "Messe",
+          date: "2025-01-25",
+          hoursWorked: 9,
+          hourlyRate: 16.00,
+          location: "Messehalle",
+          startTime: "07:00",
+          endTime: "16:00"
+        }
+      ]
+    },
+    {
+      id: "example-5",
+      employeeName: "Lisa Wagner",
+      period: "Januar 2025",
+      totalHours: 35,
+      totalPayment: 525.00,
+      hourlyRate: 15.00,
+      events: [
+        {
+          id: "E6",
+          eventName: "Hochzeit",
+          date: "2025-01-30",
+          hoursWorked: 8,
+          hourlyRate: 15.00,
+          location: "Hotel Residenz",
+          startTime: "14:00",
+          endTime: "22:00"
+        }
+      ]
+    }
+  ]
+
+  // Mitarbeiter View - Use available employees from current event or show examples
+  const filteredEmployees = availableEmployees.length > 0 
+    ? availableEmployees.map(emp => ({
+        id: emp.id,
+        employeeName: emp.name,
+        period: contextSelectedEvent?.date || "Current Event",
+        totalHours: emp.total_hours_worked || 0,
+        totalPayment: (emp.total_hours_worked || 0) * 15.50, // Default hourly rate
+        hourlyRate: 15.50,
+        events: [] // Could be populated with historical events if needed
+      }))
+    : exampleEmployees
 
   const sortedEmployees = [...filteredEmployees].sort((a, b) => {
     switch (sortBy) {
@@ -877,16 +1129,6 @@ export function EmployeeOverview({ viewMode = "mitarbeiter", setViewMode, select
                       <Users className="h-8 w-8 mx-auto mb-2 text-gray-400" />
                       <p>Kein Event ausgewählt</p>
                       <p className="text-sm">Wählen Sie ein Event aus, um verfügbare Mitarbeiter zu sehen</p>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : sortedEmployees.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="py-12 text-center">
-                    <div className="text-gray-500">
-                      <Users className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                      <p>Keine verfügbaren Mitarbeiter</p>
-                      <p className="text-sm">Für dieses Event sind aktuell keine Mitarbeiter als "verfügbar" markiert</p>
                     </div>
                   </TableCell>
                 </TableRow>

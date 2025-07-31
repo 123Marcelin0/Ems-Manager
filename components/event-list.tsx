@@ -7,6 +7,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Calendar, Clock, MapPin, Star, MoreHorizontal, Edit, Trash2, Users, Settings, CheckCircle, AlertCircle, ArrowRight, ChevronDown } from "lucide-react"
 import { EventEditDialog } from "./event-edit-dialog"
 import { EventSelectorButton } from "./event-selector-button"
+import { EventConfigurationStatus } from "./event-configuration-status"
+import { EventCard } from "./event-card"
 
 export interface Event {
   id: string
@@ -129,116 +131,19 @@ export function EventList({ events, onEdit, onDelete, onNavigateToWorkArea }: Ev
         </Badge>
       </div>
 
-      <div className="space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {events.map((event, index) => (
           <div
             key={event.id}
-            className="bg-white rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.08)]"
             style={{ animationDelay: `${index * 100}ms` }}
           >
-            <div className="flex items-start justify-between p-6">
-              <div className="flex-1">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    {/* Event Title Button - matching other views */}
-                    <div className="flex items-center gap-4 mb-3">
-                      <EventSelectorButton
-                        selectedEvent={{
-                          id: event.id,
-                          name: event.title,
-                          date: formatDate(event.date),
-                          employeesNeeded: event.employeesNeeded || 0,
-                          employeesToAsk: event.employeesToAsk || 0,
-                          status: event.status
-                        }}
-                        events={events.map(e => ({
-                          id: e.id,
-                          name: e.title,
-                          date: formatDate(e.date),
-                          employeesNeeded: e.employeesNeeded || 0,
-                          employeesToAsk: e.employeesToAsk || 0,
-                          status: e.status
-                        }))}
-                        onEventSelect={(selectedEvent) => {
-                          // Handle event selection if needed
-                          console.log('Event selected:', selectedEvent);
-                        }}
-                      />
-                      
-                      {/* Request Counter */}
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-gray-600">Anfragen:</span>
-                        <input
-                          type="number"
-                          min="1"
-                          value={event.employeesToAsk || 1}
-                          onChange={(e) => {
-                            const value = parseInt(e.target.value) || 1;
-                            // Handle update - this would need proper state management
-                            console.log('Update employees to ask:', value);
-                          }}
-                          className="h-8 w-16 text-center border border-gray-300 bg-white text-sm font-medium text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
-                        />
-                      </div>
-                    </div>
-                    
-                    {/* Additional event information */}
-                    <div className="flex items-center gap-4 text-sm text-gray-600">
-                      <div className="flex items-center gap-1.5">
-                        <MapPin className="h-4 w-4 text-gray-400" />
-                        <span>{event.location}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <Clock className="h-4 w-4 text-gray-400" />
-                        <span>{formatTime(event.time)}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary" className="text-xs font-medium">
-                      {statusConfig[event.status]?.label || event.status}
-                    </Badge>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 rounded-lg p-0 opacity-60 hover:opacity-100"
-                        >
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuItem onClick={() => handleEditClick(event)} className="gap-2 cursor-pointer">
-                          <Edit className="h-4 w-4" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem className="gap-2 cursor-pointer">
-                          <Users className="h-4 w-4" />
-                          Assign
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => onDelete(event.id)}
-                          className="gap-2 text-red-600 cursor-pointer focus:text-red-600"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-
-                <p className="text-gray-600 text-sm leading-relaxed mb-3">{event.description}</p>
-
-                {event.specialties && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Star className="h-4 w-4 text-gray-400" />
-                    <span className="text-gray-500">Required: {event.specialties}</span>
-                  </div>
-                )}
-              </div>
-            </div>
+            <EventCard
+              event={event}
+              onEdit={handleEditClick}
+              onDelete={onDelete}
+              onNavigateToWorkArea={onNavigateToWorkArea}
+              showActions={true}
+            />
           </div>
         ))}
       </div>

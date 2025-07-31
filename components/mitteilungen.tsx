@@ -68,12 +68,48 @@ export function Mitteilungen({
     setIsSaved(mitteilungenSaved || false)
   }, [mitteilungenSaved])
 
-  // Reset saved state when new changes are made
+  // Restore cached status changes when component loads or event changes
   useEffect(() => {
-    if (hasUnsavedChanges) {
-      setIsSaved(false)
+    if (selectedEvent?.id) {
+      console.log('🔄 Mitteilungen: Checking for cached status changes for event:', selectedEvent.id)
+      
+      // Check for any cached status changes for this event
+      const cachedChanges: Record<string, string> = {}
+      let foundCachedChanges = false
+      
+      employees.forEach(employee => {
+        try {
+          const cacheKey = `employee-status-${selectedEvent.id}-${employee.id}`
+          const cachedData = localStorage.getItem(cacheKey)
+          if (cachedData) {
+            const parsed = JSON.parse(cachedData)
+            // Only use cache if it's recent (within 1 hour)
+            if (Date.now() - parsed.timestamp < 60 * 60 * 1000) {
+              cachedChanges[employee.id] = parsed.status
+              foundCachedChanges = true
+              console.log(`💾 Mitteilungen: Found cached status for ${employee.id}: ${parsed.status}`)
+            } else {
+              // Clean up expired cache
+              localStorage.removeItem(cacheKey)
+            }
+          }
+        } catch (error) {
+          console.warn(`Failed to restore cached status for employee ${employee.id}:`, error)
+        }
+      })
+      
+      if (foundCachedChanges) {
+        console.log('🔄 Mitteilungen: Restoring cached status changes:', cachedChanges)
+        setPendingStatusChanges(cachedChanges)
+        setHasUnsavedChanges(true)
+        
+        // Apply cached changes to prevent status reset
+        Object.entries(cachedChanges).forEach(([employeeId, status]) => {
+          onStatusChange(employeeId, status)
+        })
+      }
     }
-  }, [hasUnsavedChanges])
+  }, [selectedEvent?.id, employees.length])
 
   // Reset saved state when new changes are made
   useEffect(() => {
@@ -82,17 +118,40 @@ export function Mitteilungen({
     }
   }, [hasUnsavedChanges])
 
-  // Handle local status changes (don't save to database immediately)
+  // Reset saved state when new changes are made
+  useEffect(() => {
+    if (hasUnsavedChanges) {
+      setIsSaved(false)
+    }
+  }, [hasUnsavedChanges])
+
+  // Handle local status changes (apply immediately to prevent reset)
   const handleLocalStatusChange = (employeeId: string, newStatus: string) => {
     console.log('🔄 Mitteilungen: Local status change:', { employeeId, newStatus })
     
-    // Store the pending change
+    // Store the pending change for manual save tracking
     setPendingStatusChanges(prev => ({
       ...prev,
       [employeeId]: newStatus
     }))
     
     setHasUnsavedChanges(true)
+    
+    // IMPORTANT: Apply status change immediately to prevent reset
+    // This ensures the status is visible in the UI right away and persisted
+    onStatusChange(employeeId, newStatus)
+    
+    // Also update local cache to prevent status loss on page refresh
+    try {
+      const cacheKey = `employee-status-${selectedEvent?.id}-${employeeId}`
+      localStorage.setItem(cacheKey, JSON.stringify({
+        status: newStatus,
+        timestamp: Date.now()
+      }))
+      console.log('💾 Mitteilungen: Cached employee status change locally')
+    } catch (error) {
+      console.warn('Failed to cache employee status locally:', error)
+    }
   }
 
   // Handle bulk operations (like random selection) - bypass manual saving
@@ -128,15 +187,35 @@ export function Mitteilungen({
       setPendingStatusChanges({})
       setHasUnsavedChanges(false)
       
+      // Clean up local cache since changes are now saved to database
+      if (selectedEvent?.id) {
+        Object.keys(pendingStatusChanges).forEach(employeeId => {
+          try {
+            const cacheKey = `employee-status-${selectedEvent.id}-${employeeId}`
+            localStorage.removeItem(cacheKey)
+            console.log(`🗑️ Mitteilungen: Cleaned up cache for ${employeeId}`)
+          } catch (error) {
+            console.warn(`Failed to clean up cache for employee ${employeeId}:`, error)
+          }
+        })
+      }
+      
       // Call parent callback
       if (onMitteilungenSaved) {
         onMitteilungenSaved()
       }
       
+      // Dispatch configuration change event
+      if (selectedEvent?.id) {
+        window.dispatchEvent(new CustomEvent('configurationChanged', { 
+          detail: { eventId: selectedEvent.id, type: 'mitteilungen' } 
+        }))
+      }
+      
       setIsSaved(true)
       setIsSaving(false)
       
-      console.log('✅ Mitteilungen: Save process completed successfully')
+      console.log('✅ Mitteilungen: Save process completed successfully with cache cleanup')
     } catch (error) {
       console.error('❌ Mitteilungen: Error saving changes:', error)
       setIsSaving(false)
@@ -228,7 +307,7 @@ export function Mitteilungen({
         activeFilter={activeFilter}
         setActiveFilter={setActiveFilter}
         stats={stats}
-        onStatusChange={onStatusChange}
+        onStatusChange={handleLocalStatusChange} // Use local handler to prevent immediate reset
         authorizationMode={authorizationMode}
         selectedForAuth={selectedForAuth}
         setSelectedForAuth={setSelectedForAuth}

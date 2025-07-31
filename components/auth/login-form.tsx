@@ -76,122 +76,131 @@ export function LoginForm({ onToggleMode, showSignUp = false }: LoginFormProps) 
   const displayError = localError || error
 
   return (
-    <Card className="w-full max-w-md mx-auto">
-      <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl font-bold text-center">
-          {isSignUpMode ? 'Registrieren' : 'Anmelden'}
+    <Card className="w-full max-w-md mx-auto backdrop-blur-sm bg-white/90 shadow-2xl border-0 rounded-3xl overflow-hidden">
+      <CardHeader className="space-y-4 pb-8 pt-8 px-8">
+        <CardTitle className="text-2xl font-bold text-center text-slate-800">
+          {isSignUpMode ? 'Neues Konto erstellen' : 'Willkommen zurück'}
         </CardTitle>
-        <CardDescription className="text-center">
+        <CardDescription className="text-center text-slate-600 leading-relaxed">
           {isSignUpMode 
-            ? 'Erstellen Sie ein neues Konto für das Event Management System'
-            : 'Melden Sie sich bei Ihrem Event Management System an'
+            ? 'Erstellen Sie Ihr Konto und beginnen Sie mit der professionellen Event-Verwaltung'
+            : 'Melden Sie sich an, um auf Ihr Event Management System zuzugreifen'
           }
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+      <CardContent className="px-8 pb-8">
+        <form onSubmit={handleSubmit} className="space-y-6">
           {displayError && (
-            <Alert variant="destructive">
-              <AlertDescription>{displayError}</AlertDescription>
+            <Alert variant="destructive" className="rounded-xl border-red-200 bg-red-50">
+              <AlertDescription className="text-red-700">{displayError}</AlertDescription>
             </Alert>
           )}
           
-          <div className="space-y-2">
-            <label htmlFor="email" className="text-sm font-medium">
+          <div className="space-y-3">
+            <label htmlFor="email" className="text-sm font-semibold text-slate-700">
               E-Mail-Adresse
             </label>
             <div className="relative">
               <Input
                 id="email"
                 type="email"
-                placeholder="ihre.email@beispiel.de"
+                placeholder="ihre.email@unternehmen.de"
                 value={formData.email}
                 onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                className="pl-10"
+                className="pl-12 h-12 rounded-xl border-slate-200 bg-slate-50/50 focus:bg-white focus:border-blue-400 focus:ring-blue-400/20 transition-all duration-200"
                 disabled={loading}
                 required
               />
-              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-slate-400" />
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label htmlFor="password" className="text-sm font-medium">
+          <div className="space-y-3">
+            <label htmlFor="password" className="text-sm font-semibold text-slate-700">
               Passwort
             </label>
             <div className="relative">
               <Input
                 id="password"
                 type={showPassword ? 'text' : 'password'}
-                placeholder={isSignUpMode ? 'Mindestens 6 Zeichen' : 'Ihr Passwort'}
+                placeholder={isSignUpMode ? 'Mindestens 6 Zeichen eingeben' : 'Ihr sicheres Passwort'}
                 value={formData.password}
                 onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                className="pl-10 pr-10"
+                className="pl-12 pr-12 h-12 rounded-xl border-slate-200 bg-slate-50/50 focus:bg-white focus:border-blue-400 focus:ring-blue-400/20 transition-all duration-200"
                 disabled={loading}
                 required
               />
-              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-slate-400" />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-4 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors duration-200"
                 disabled={loading}
               >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
             </div>
           </div>
 
           {isSignUpMode && (
-            <div className="space-y-2">
-              <label htmlFor="confirmPassword" className="text-sm font-medium">
+            <div className="space-y-3">
+              <label htmlFor="confirmPassword" className="text-sm font-semibold text-slate-700">
                 Passwort bestätigen
               </label>
               <div className="relative">
                 <Input
                   id="confirmPassword"
                   type={showPassword ? 'text' : 'password'}
-                  placeholder="Passwort wiederholen"
+                  placeholder="Passwort zur Bestätigung wiederholen"
                   value={formData.confirmPassword}
                   onChange={(e) => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                  className="pl-10"
+                  className="pl-12 h-12 rounded-xl border-slate-200 bg-slate-50/50 focus:bg-white focus:border-blue-400 focus:ring-blue-400/20 transition-all duration-200"
                   disabled={loading}
                   required
                 />
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-slate-400" />
               </div>
             </div>
           )}
 
           <Button
             type="submit"
-            className="w-full"
+            className="w-full h-12 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
             disabled={loading}
           >
             {loading ? (
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                {isSignUpMode ? 'Registriere...' : 'Melde an...'}
+              <div className="flex items-center gap-3">
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>{isSignUpMode ? 'Konto wird erstellt...' : 'Anmeldung läuft...'}</span>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
-                <LogIn className="h-4 w-4" />
-                {isSignUpMode ? 'Registrieren' : 'Anmelden'}
+              <div className="flex items-center gap-3">
+                <LogIn className="h-5 w-5" />
+                <span>{isSignUpMode ? 'Konto erstellen' : 'Jetzt anmelden'}</span>
               </div>
             )}
           </Button>
         </form>
 
-        <div className="mt-4 text-center space-y-2">
+        <div className="mt-8 text-center space-y-4">
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-4 bg-white text-slate-500">oder</span>
+            </div>
+          </div>
+          
           <button
             type="button"
             onClick={toggleMode}
-            className="text-sm text-blue-600 hover:text-blue-800 underline block mx-auto"
+            className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors duration-200 block mx-auto"
             disabled={loading}
           >
             {isSignUpMode 
-              ? 'Bereits ein Konto? Hier anmelden'
-              : 'Noch kein Konto? Hier registrieren'
+              ? '← Bereits ein Konto? Jetzt anmelden'
+              : 'Noch kein Konto? → Jetzt registrieren'
             }
           </button>
           
@@ -201,12 +210,12 @@ export function LoginForm({ onToggleMode, showSignUp = false }: LoginFormProps) 
               onClick={() => {
                 // This would open a password reset form
                 // For now, just show an alert
-                alert('Passwort-Reset-Funktion wird implementiert')
+                alert('Die Passwort-Reset-Funktion wird in Kürze verfügbar sein.')
               }}
-              className="text-xs text-gray-500 hover:text-gray-700 underline block mx-auto"
+              className="text-xs text-slate-500 hover:text-slate-700 transition-colors duration-200 block mx-auto"
               disabled={loading}
             >
-              Passwort vergessen?
+              Passwort vergessen? → Hier zurücksetzen
             </button>
           )}
         </div>

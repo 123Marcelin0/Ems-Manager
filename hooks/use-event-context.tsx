@@ -289,29 +289,30 @@ export function EventProvider({ children }: { children: ReactNode }) {
       } catch (statusError) {
         console.warn('Event Context: Could not load employee statuses, preserving existing data if available:', statusError)
         
-        // Try to preserve existing employee data or use cached data to prevent status reset
+        // IMPORTANT: Prioritize preserving existing employee data to prevent status reset
         if (eventEmployees.length > 0) {
           console.log('🔄 Event Context: Preserving existing employee data to prevent status reset')
           eventEmployeeData = eventEmployees
         } else {
-          // Try to load from cache
+          // Try to load from cache as second priority
           try {
             const cachedData = localStorage.getItem(EMPLOYEE_STATUS_CACHE_KEY)
             if (cachedData) {
               const parsed = JSON.parse(cachedData)
               if (parsed.eventId === event.id && (Date.now() - parsed.timestamp) < 24 * 60 * 60 * 1000) { // 24 hour cache
-                console.log('💾 Event Context: Using cached employee status data')
+                console.log('💾 Event Context: Using cached employee status data to prevent reset')
                 eventEmployeeData = parsed.employees
               } else {
-                console.log('🔄 Event Context: Cache expired or wrong event, using defaults')
+                console.log('🔄 Event Context: Cache expired or wrong event, using defaults carefully')
                 throw new Error('Cache expired')
               }
             } else {
               throw new Error('No cache available')
             }
           } catch (cacheError) {
-            console.log('🔄 Event Context: No valid cache, using defaults')
+            console.log('🔄 Event Context: No valid cache, using defaults (CAUTION: may reset statuses)')
             // Only use defaults if we have no existing data and no cache
+            // IMPORTANT: This is the last resort and may cause status reset
             eventEmployeeData = (dbEmployees || []).map(emp => ({
               id: emp.id,
               name: emp.name,
@@ -321,6 +322,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
               notes: `${emp.role} - ${emp.employment_type === 'fixed' ? 'Festangestellt' : 'Teilzeit'}`,
               eventStatus: "not_asked"
             }))
+            console.warn('⚠️ Event Context: Using default employee statuses - this may reset user selections')
           }
         }
       }

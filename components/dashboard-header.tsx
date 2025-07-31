@@ -149,7 +149,7 @@ function EmployeeOverviewButtonGroup({ activeView, setActiveView }: EmployeeOver
           <Search className={`absolute left-7 top-1/2 h-4 w-4 -translate-y-1/2 text-blue-600 transition-all duration-500 ${isSearchOpen ? "opacity-100 scale-100" : "opacity-0 scale-90"
             }`} />
           <input
-            placeholder="Search employees..."
+            placeholder="Mitarbeiter suchen..."
             className={`h-11 w-full rounded-full border-0 bg-transparent pl-8 pr-4 text-sm focus:outline-none transition-all duration-500 ${isSearchOpen ? "opacity-100" : "opacity-0"
               }`}
             autoFocus={isSearchOpen}
@@ -260,7 +260,7 @@ function FilterButtonGroup({ filters, activeFilter, setActiveFilter }: FilterBut
           <Search className={`absolute left-7 top-1/2 h-4 w-4 -translate-y-1/2 text-blue-600 transition-all duration-500 ${isSearchOpen ? "opacity-100 scale-100" : "opacity-0 scale-90"
             }`} />
           <input
-            placeholder="Search employees..."
+            placeholder="Mitarbeiter suchen..."
             className={`h-11 w-full rounded-full border-0 bg-transparent pl-8 pr-4 text-sm focus:outline-none transition-all duration-500 ${isSearchOpen ? "opacity-100" : "opacity-0"
               }`}
             autoFocus={isSearchOpen}
@@ -507,7 +507,7 @@ function WorkAreaButtonGroup({ activeView, setActiveView, selectedEvent, onNavig
           <Search className={`absolute left-7 top-1/2 h-4 w-4 -translate-y-1/2 text-blue-600 ${isOnUbersicht ? "" : "transition-all duration-500"} ${isSearchOpen ? "opacity-100 scale-100" : "opacity-0 scale-90"
             }`} />
           <input
-            placeholder="Search employees..."
+            placeholder="Mitarbeiter suchen..."
             className={`h-11 w-full rounded-full border-0 bg-transparent pl-8 pr-4 text-sm focus:outline-none ${isOnUbersicht ? "" : "transition-all duration-500"} ${isSearchOpen ? "opacity-100" : "opacity-0"
               }`}
             autoFocus={isSearchOpen}
@@ -550,7 +550,7 @@ function RoleSearchButtonGroup({ searchQuery, setSearchQuery }: { searchQuery?: 
           <Search className="absolute left-7 top-1/2 h-4 w-4 -translate-y-1/2 text-blue-600" />
           <input
             type="text"
-            placeholder="Search employees..."
+            placeholder="Mitarbeiter suchen..."
             value={searchQuery || ""}
             onChange={(e) => setSearchQuery?.(e.target.value)}
             className="h-11 w-full rounded-full border-0 bg-transparent pl-8 pr-4 text-sm focus:outline-none"
@@ -658,7 +658,7 @@ function EventSchedulerButtonGroup({ activeView, setActiveView }: EventScheduler
           <Search className={`absolute left-7 top-1/2 h-4 w-4 -translate-y-1/2 text-blue-600 transition-all duration-500 ${isSearchOpen ? "opacity-100 scale-100" : "opacity-0 scale-90"
             }`} />
           <input
-            placeholder="Search events..."
+            placeholder="Events suchen..."
             className={`h-11 w-full rounded-full border-0 bg-transparent pl-8 pr-4 text-sm focus:outline-none transition-all duration-500 ${isSearchOpen ? "opacity-100" : "opacity-0"
               }`}
             autoFocus={isSearchOpen}

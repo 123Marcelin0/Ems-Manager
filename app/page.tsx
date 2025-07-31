@@ -253,13 +253,35 @@ function DashboardContent() {
     alwaysNeeded: finalEmployees.filter((e) => e.status === "always-needed").length,
   }
 
-  const filteredEmployees = finalEmployees.filter((employee) => {
-    if (activeFilter === "all") return true
-    if (activeFilter === "available") return employee.status === "available"
-    if (activeFilter === "selected") return employee.status === "selected"
-    if (activeFilter === "unavailable") return employee.status === "unavailable"
-    return false
-  })
+  // Define status priority order for sorting
+  const statusPriority = {
+    "available": 1,        // Verfügbar - highest priority
+    "always-needed": 2,    // Immer Gebraucht - second priority  
+    "selected": 3,         // Ausgewählt - third priority
+    "unavailable": 4,      // Nicht Verfügbar - fourth priority
+    "not-selected": 5      // Nicht Ausgewählt - lowest priority
+  }
+
+  const filteredEmployees = finalEmployees
+    .filter((employee) => {
+      if (activeFilter === "all") return true
+      if (activeFilter === "available") return employee.status === "available"
+      if (activeFilter === "selected") return employee.status === "selected"
+      if (activeFilter === "unavailable") return employee.status === "unavailable"
+      return false
+    })
+    .sort((a, b) => {
+      const priorityA = statusPriority[a.status as keyof typeof statusPriority] || 999
+      const priorityB = statusPriority[b.status as keyof typeof statusPriority] || 999
+      
+      // First sort by status priority
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB
+      }
+      
+      // If same status, sort alphabetically by name
+      return a.name.localeCompare(b.name)
+    })
 
   const handleRandomSelection = async () => {
     console.log('🎲 handleRandomSelection called:', { selectedEvent: selectedEvent?.id, requiredEmployees, count: Number.parseInt(requiredEmployees) });
@@ -301,14 +323,15 @@ function DashboardContent() {
               // Find the employee in our local state
               const localEmployee = finalEmployees.find(emp => emp.id === employee.employee_id);
               if (localEmployee) {
-                await handleStatusChange(localEmployee.id, "selected");
+                // IMPORTANT: Set status to "available" (not "selected")
+                await handleStatusChange(localEmployee.id, "available");
               }
             }
             
             // Force a small delay to ensure state is updated before resetting count
             await new Promise(resolve => setTimeout(resolve, 100));
             
-            console.log('✅ Random selection completed - UI should now show employees as "Ausgewählt"');
+            console.log('✅ Random selection completed - UI should now show employees as "Verfügbar"');
           }
           
           // Reset the required employees count
@@ -327,7 +350,7 @@ function DashboardContent() {
       
       // Filter selectable employees, excluding those with "always-needed" status
       const selectableEmployees = finalEmployees.filter((e) => 
-        e.status !== "always-needed" && (e.status === "available" || e.status === "not-selected")
+        e.status !== "always-needed" && (e.status === "not-selected")
       )
       
       console.log('📊 Selectable employees:', selectableEmployees.length);
@@ -350,13 +373,14 @@ function DashboardContent() {
       // Select the required number of employees from the sorted list
       const selected = sortedByLastSelection.slice(0, Math.min(count, sortedByLastSelection.length))
 
-      // Update employee statuses to "selected" 
+      // IMPORTANT: Update employee statuses to "available" (not "selected")
+      // This directly sets them as available for work assignment
       for (const employee of selected) {
-        await handleStatusChange(employee.id, "selected")
+        await handleStatusChange(employee.id, "available")
       }
 
-      console.log('✅ Client-side random selection completed:', selected.length, 'employees selected');
-      console.log('Selected employees based on longest time since last selection:', selected);
+      console.log('✅ Client-side random selection completed:', selected.length, 'employees set to available');
+      console.log('Available employees based on longest time since last selection:', selected);
       
       // Reset the required employees count
       setRequiredEmployees("0");
@@ -522,6 +546,11 @@ function DashboardContent() {
               detail: { employeeId, newStatus, eventId: selectedEvent.id } 
             }));
           }
+          
+          // Dispatch configuration change event for status updates
+          window.dispatchEvent(new CustomEvent('configurationChanged', { 
+            detail: { eventId: selectedEvent.id, type: 'employeeStatus', employeeId, newStatus } 
+          }));
           
         } else {
           console.warn('Mitteilungen: updateEmployeeStatus function not available, status updated locally only');

@@ -44,7 +44,8 @@ export function QuickActions({
           onClick={onRandomSelection}
           disabled={!selectedEvent || !requiredEmployees || Number.parseInt(requiredEmployees) <= 0}
           className="h-10 gap-2 rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 px-4 font-medium shadow-sm transition-all duration-200 hover:from-blue-600 hover:to-blue-700 hover:shadow-md disabled:opacity-50"
-          aria-label="Randomly select employees"
+          aria-label="Randomly select employees and set them as available"
+          title="Wählt zufällig Mitarbeiter aus und setzt sie als 'Verfügbar'"
         >
           <Shuffle className="h-4 w-4" />
           Zufällige Auswahl
@@ -54,13 +55,14 @@ export function QuickActions({
           <Input
             id="required-employees"
             type="number"
-            placeholder={selectedEvent ? "# Mitarbeiter auswählen" : "Zuerst Veranstaltung auswählen"}
+            placeholder={selectedEvent ? "# Mitarbeiter als verfügbar setzen" : "Zuerst Veranstaltung auswählen"}
             value={requiredEmployees}
             onChange={(e) => setRequiredEmployees(e.target.value)}
             className="h-10 w-full rounded-lg border-gray-200 bg-white/50 transition-all duration-200 focus:border-blue-300 focus:ring-2 focus:ring-blue-100 pr-8"
             min="0"
             disabled={!selectedEvent}
-            aria-label="Number of required employees"
+            aria-label="Number of employees to set as available"
+            title="Anzahl der Mitarbeiter, die als 'Verfügbar' gesetzt werden sollen"
           />
         </div>
 

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Calendar, ChevronDown, Check } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { EventConfigurationStatus } from "./event-configuration-status"
 
 interface Event {
   id: string
@@ -97,18 +98,27 @@ export function EventSelectorButton({ selectedEvent, events, onEventSelect, onCo
                           )}
                         </div>
                         <p className="text-sm text-gray-600 mb-2">{event.date}</p>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="secondary" className="text-xs">
-                            {event.employeesNeeded} Mitarbeiter
-                          </Badge>
-                          {event.status && (
-                            <Badge 
-                              variant={event.status === "active" ? "default" : "secondary"}
-                              className="text-xs"
-                            >
-                              {event.status === "active" ? "Aktiv" : event.status}
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary" className="text-xs">
+                              {event.employeesNeeded} Mitarbeiter
                             </Badge>
-                          )}
+                            {event.status && (
+                              <Badge 
+                                variant={event.status === "active" ? "default" : "secondary"}
+                                className="text-xs"
+                              >
+                                {event.status === "active" ? "Aktiv" : event.status}
+                              </Badge>
+                            )}
+                          </div>
+                          
+                          {/* Configuration Status */}
+                          <EventConfigurationStatus 
+                            eventId={event.id} 
+                            compact={true}
+                            showDetails={false}
+                          />
                         </div>
                       </div>
                     </div>
